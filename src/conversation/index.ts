@@ -1,0 +1,41 @@
+// Re-export environment type
+export type { ConversationEnvironment } from '../environment';
+
+// Create
+export { createConversation } from './create';
+
+// Append
+export {
+  appendAssistantMessage,
+  appendMessages,
+  appendSystemMessage,
+  appendUserMessage,
+} from './append';
+
+// Query
+export {
+  computeConversationStatistics,
+  getConversationMessages,
+  getMessageAtPosition,
+  getMessageByIdentifier,
+  searchConversationMessages,
+} from './query';
+
+// System messages
+export {
+  collapseSystemMessages,
+  getFirstSystemMessage,
+  getSystemMessages,
+  hasSystemMessage,
+  prependSystemMessage,
+  replaceSystemMessage,
+} from './system-messages';
+
+// Modify
+export { redactMessageAtPosition } from './modify';
+
+// Serialization
+export { deserializeConversation, serializeConversation } from './serialization';
+
+// Transform
+export { toChatMessages } from './transform';

@@ -12,7 +12,11 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 const commonFiles = '**/*.{js,jsx,cjs,mjs,ts,tsx}';
-const testFiles = ['**/*.{test,spec}.{js,jsx,ts,tsx}', '**/test/**/*.{js,jsx,ts,tsx}', '**/__tests__/**/*.{js,jsx,ts,tsx}'];
+const testFiles = [
+  '**/*.{test,spec}.{js,jsx,ts,tsx}',
+  '**/test/**/*.{js,jsx,ts,tsx}',
+  '**/__tests__/**/*.{js,jsx,ts,tsx}',
+];
 
 const commonPlugins = {
   promise,

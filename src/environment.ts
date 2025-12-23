@@ -1,35 +1,43 @@
-import { z } from 'zod';
-
-const environmentSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-});
-
-export type Environment = z.infer<typeof environmentSchema>;
-
-function validateEnvironment(env = import.meta.env): Environment {
-  try {
-    return environmentSchema.parse(env);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const errorMessage = error.issues
-        .map((err) => `${err.path.join('.')}: ${err.message}`)
-        .join('\n');
-      throw new Error(`Environment validation failed: ${errorMessage}`);
-    }
-    throw error;
-  }
+/**
+ * Environment functions for conversation operations.
+ * Allows dependency injection for testing and custom ID generation.
+ */
+export interface ConversationEnvironment {
+  now: () => string;
+  randomId: () => string;
 }
 
-export const environment = validateEnvironment();
+/**
+ * Default environment using Date.toISOString() and crypto.randomUUID().
+ */
+export const defaultConversationEnvironment: ConversationEnvironment = {
+  now: () => new Date().toISOString(),
+  randomId: () => crypto.randomUUID(),
+};
 
-export function isDevelopment(): boolean {
-  return environment.NODE_ENV === 'development';
+/**
+ * Merges a partial environment with defaults.
+ * Returns a complete environment with all required functions.
+ */
+export function resolveConversationEnvironment(
+  environment?: Partial<ConversationEnvironment>,
+): ConversationEnvironment {
+  return {
+    now: environment?.now ?? defaultConversationEnvironment.now,
+    randomId: environment?.randomId ?? defaultConversationEnvironment.randomId,
+  };
 }
 
-export function isProduction(): boolean {
-  return environment.NODE_ENV === 'production';
-}
+/**
+ * Type guard to distinguish environment objects from message inputs.
+ * Returns true if the value has environment functions but no role property.
+ */
+export function isConversationEnvironmentParameter(
+  value: unknown,
+): value is Partial<ConversationEnvironment> {
+  if (!value || typeof value !== 'object') return false;
+  if ('role' in (value as Record<string, unknown>)) return false;
 
-export function isTest(): boolean {
-  return environment.NODE_ENV === 'test';
+  const candidate = value as Partial<ConversationEnvironment>;
+  return typeof candidate.now === 'function' || typeof candidate.randomId === 'function';
 }

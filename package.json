@@ -1,20 +1,59 @@
 {
   "name": "conversationalist",
   "version": "0.0.1",
-  "private": true,
+  "description": "A TypeScript library for managing AI conversation state",
+  "keywords": [
+    "conversation",
+    "ai",
+    "chat",
+    "llm",
+    "typescript"
+  ],
+  "homepage": "https://github.com/stevekinney/conversationalist#readme",
+  "bugs": {
+    "url": "https://github.com/stevekinney/conversationalist/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stevekinney/conversationalist.git"
+  },
+  "license": "MIT",
+  "author": "Steve Kinney <hello@stevekinney.net>",
   "type": "module",
   "exports": {
-    "bun": "./dist/index.js",
-    "node": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./openai": {
+      "types": "./dist/adapters/openai/index.d.ts",
+      "import": "./dist/adapters/openai/index.js"
+    },
+    "./anthropic": {
+      "types": "./dist/adapters/anthropic/index.d.ts",
+      "import": "./dist/adapters/anthropic/index.js"
+    },
+    "./gemini": {
+      "types": "./dist/adapters/gemini/index.d.ts",
+      "import": "./dist/adapters/gemini/index.js"
+    }
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
-    "build": "bun build --target=bun --outdir=dist --minify --sourcemap=external ./src/index.ts",
+    "build": "bun run scripts/build.ts",
     "dev": "bun --watch run src/index.ts",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "prepare": "husky",
+    "prepublishOnly": "bun run validate && bun run build",
     "start": "bun run src/index.ts",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
@@ -45,6 +84,7 @@
     "@eslint/eslintrc": "^3.3.3",
     "@eslint/js": "^9.39.2",
     "@eslint/markdown": "^7.5.1",
+    "@lasercat/homogenaize": "^1.2.41",
     "@types/bun": "^1.3.5",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
     "@typescript-eslint/parser": "^8.50.0",

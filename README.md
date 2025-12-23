@@ -1,114 +1,369 @@
-# Project Name
+# Conversationalist
 
-## Prerequisites
-
-- [Bun](https://bun.sh) installed on your machine.
+A TypeScript library for managing LLM conversation state with immutable data structures and type-safe APIs.
 
 ## Installation
 
-Create a new project based on this template:
-
 ```bash
-# Basic installation
-bun create github.com/stevekinney/bun-template $PROJECT_DIRECTORY
-
-# Skip installing dependencies (useful for CI or offline work)
-bun create github.com/stevekinney/bun-template $PROJECT_DIRECTORY --no-install
+bun add conversationalist
+npm add conversationalist
 ```
 
-The `--no-install` flag is helpful when:
+## Core Concepts
 
-- Working in offline environments
-- Using CI pipelines with cached dependencies
-- You plan to modify dependencies before installation
+### Conversation
 
-## Core Tools
+A conversation is an immutable data structure containing messages, metadata, and timestamps:
 
-- Bun: runtime, bundler, test runner, and package manager
-- TypeScript: strict type checking
-- ESLint + Prettier: linting and formatting (flat config)
-- Husky + lint-staged: fast pre-commit checks
+```typescript
+import {
+  createConversation,
+  appendUserMessage,
+  appendAssistantMessage,
+} from 'conversationalist';
 
-## Development
+let conversation = createConversation({ title: 'My Chat' });
 
-Start the development server:
-
-```bash
-bun run dev
+conversation = appendUserMessage(conversation, 'Hello!');
+conversation = appendAssistantMessage(conversation, 'Hi there!');
 ```
 
-### Git Hooks (Husky)
+### Messages
 
-Husky is set up via the `prepare` script on install. Hooks are implemented as Bun TypeScript files in `scripts/husky/` and invoked by wrappers in `.husky/`.
+Messages have roles (`user`, `assistant`, `system`, `tool-use`, `tool-result`, `developer`, `snapshot`) and can contain text or multi-modal content:
 
-- `pre-commit`: runs lint-staged; ensures `bun.lock` is staged when `package.json` is.
-- `post-checkout`: on branch checkouts, installs deps when `package.json` + `bun.lock` changed; surfaces config changes.
-- `post-merge`: installs deps and cleans caches when config changed; prints merge stats and conflict checks.
+```typescript
+import { appendMessages } from 'conversationalist';
 
-Use `--no-verify` to bypass hooks (not recommended).
+// Text message
+conversation = appendMessages(conversation, {
+  role: 'user',
+  content: 'What is in this image?',
+});
 
-### Running Tests
-
-This template comes with Bun's built-in test runner. To run tests:
-
-```bash
-bun test
+// Multi-modal message with image
+conversation = appendMessages(conversation, {
+  role: 'user',
+  content: [
+    { type: 'text', text: 'Describe this:' },
+    { type: 'image', url: 'https://example.com/image.png' },
+  ],
+});
 ```
 
-For watching mode:
+### Tool Calls
 
-```bash
-bun test --watch
+Tool use is supported with linked tool calls and results:
+
+```typescript
+conversation = appendMessages(
+  conversation,
+  {
+    role: 'tool-use',
+    content: '',
+    toolCall: { id: 'call_123', name: 'get_weather', arguments: '{"city":"NYC"}' },
+  },
+  {
+    role: 'tool-result',
+    content: '',
+    toolResult: { callId: 'call_123', outcome: 'success', content: '72°F, sunny' },
+  },
+);
 ```
 
-For test coverage:
+## API Reference
 
-```bash
-bun test --coverage
+### Creating Conversations
+
+```typescript
+createConversation(options?: {
+  id?: string;
+  title?: string;
+  status?: 'active' | 'archived' | 'deleted';
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+}): Conversation
 ```
 
-### Continuous Integration
+### Appending Messages
 
-No CI workflows are included by default. Add your own under `.github/workflows/` as needed.
+```typescript
+appendMessages(conversation: Conversation, ...inputs: MessageInput[]): Conversation
+appendUserMessage(conversation: Conversation, content: string | MultiModalContent[]): Conversation
+appendAssistantMessage(conversation: Conversation, content: string | MultiModalContent[]): Conversation
+appendSystemMessage(conversation: Conversation, content: string): Conversation
+prependSystemMessage(conversation: Conversation, content: string): Conversation
+replaceSystemMessage(conversation: Conversation, content: string): Conversation
+```
 
-### Understanding `bun run` vs `bunx`
+### Querying Messages
 
-`bun run` and `bunx` are two different commands that often confuse beginners:
+```typescript
+getConversationMessages(conversation: Conversation, options?: { includeHidden?: boolean }): Message[]
+getMessageAtPosition(conversation: Conversation, position: number): Message | undefined
+getMessageByIdentifier(conversation: Conversation, id: string): Message | undefined
+searchConversationMessages(conversation: Conversation, predicate: (m: Message) => boolean): Message[]
+```
 
-- **bun run**: Executes scripts defined in your project's package.json (like `bun run dev` runs the "dev" script). Also runs local TypeScript/JavaScript files directly (like `bun run src/index.ts`).
+### System Messages
 
-- **bunx**: Executes binaries from npm packages without installing them globally (similar to `npx`). Use it for one-off commands or tools you don't need permanently installed (like `bunx prettier --write .` or `bunx shadcn@canary add button`).
+```typescript
+hasSystemMessage(conversation: Conversation): boolean
+getFirstSystemMessage(conversation: Conversation): Message | undefined
+getSystemMessages(conversation: Conversation): Message[]
+collapseSystemMessages(conversation: Conversation): Conversation
+```
 
-## Project Structure
+### Utilities
 
-- `src/` - Source code for your application
-- `.husky/` - Git hook wrappers (shell) calling Bun scripts in `scripts/husky/`
-- `scripts/husky/` - Hook implementations (TypeScript + Bun)
+```typescript
+computeConversationStatistics(conversation: Conversation): {
+  total: number;
+  byRole: Record<string, number>;
+  hidden: number;
+  withImages: number;
+}
 
-## Customization
+redactMessageAtPosition(conversation: Conversation, position: number, placeholder?: string): Conversation
+```
 
-### TypeScript Configuration
+### Serialization
 
-The template includes TypeScript configuration with path aliases:
+```typescript
+serializeConversation(conversation: Conversation): ConversationJSON
+deserializeConversation(json: ConversationJSON): Conversation
+toChatMessages(conversation: Conversation): ExternalMessage[]
+```
 
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+### Builder Pattern
+
+For fluent API style:
+
+```typescript
+import { createConversation } from 'conversationalist';
+import { withConversation, pipeConversation } from 'conversationalist';
+import { simpleTokenEstimator } from 'conversationalist';
+
+// Draft pattern with callback
+const conversation = withConversation(createConversation(), (draft) => {
+  draft
+    .appendSystemMessage('You are a helpful assistant.')
+    .appendUserMessage('Hello!')
+    .appendAssistantMessage('Hi there!');
+});
+
+// Streaming with the draft pattern
+const streamedConversation = withConversation(createConversation(), (draft) => {
+  const { draft: d, messageId } = draft.appendStreamingMessage('assistant');
+  d.updateStreamingMessage(messageId, 'Partial response...').finalizeStreamingMessage(
+    messageId,
+    { tokenUsage: { prompt: 10, completion: 5, total: 15 } },
+  );
+});
+
+// Context window management with the draft pattern
+const truncatedConversation = withConversation(conversation, (draft) => {
+  draft.truncateToTokenLimit(4000, simpleTokenEstimator, { preserveLastN: 2 });
+});
+
+// Pipe pattern
+const conversation = pipeConversation(
+  createConversation(),
+  (c) => appendSystemMessage(c, 'You are helpful.'),
+  (c) => appendUserMessage(c, 'Hello!'),
+);
+```
+
+The `ConversationDraft` provides all conversation manipulation methods:
+
+- **Message appending**: `appendMessages`, `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`
+- **System messages**: `prependSystemMessage`, `replaceSystemMessage`, `collapseSystemMessages`
+- **Modification**: `redactMessageAtPosition`
+- **Streaming**: `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage`
+- **Context window**: `truncateFromPosition`, `truncateToTokenLimit`
+
+### Tool Call Pairing
+
+```typescript
+import { pairToolCallsWithResults } from 'conversationalist';
+
+const pairs = pairToolCallsWithResults(conversation.messages);
+// Returns: [{ call: ToolCall, result?: ToolResult }, ...]
+```
+
+## Provider Adapters
+
+Convert conversations to provider-specific formats using subpath exports:
+
+### OpenAI
+
+```typescript
+import { toOpenAIMessages } from 'conversationalist/openai';
+
+const messages = toOpenAIMessages(conversation);
+const response = await openai.chat.completions.create({
+  model: 'gpt-4',
+  messages,
+});
+```
+
+### Anthropic
+
+```typescript
+import { toAnthropicMessages } from 'conversationalist/anthropic';
+
+const { system, messages } = toAnthropicMessages(conversation);
+const response = await anthropic.messages.create({
+  model: 'claude-3-opus-20240229',
+  system,
+  messages,
+});
+```
+
+### Google Gemini
+
+```typescript
+import { toGeminiMessages } from 'conversationalist/gemini';
+
+const { systemInstruction, contents } = toGeminiMessages(conversation);
+const response = await model.generateContent({
+  systemInstruction,
+  contents,
+});
+```
+
+## Streaming Support
+
+Handle streaming responses with pending message utilities:
+
+```typescript
+import {
+  appendStreamingMessage,
+  updateStreamingMessage,
+  finalizeStreamingMessage,
+  cancelStreamingMessage,
+  isStreamingMessage,
+  getStreamingMessage,
+} from 'conversationalist';
+
+// Start a streaming message
+let { conversation, messageId } = appendStreamingMessage(conversation, 'assistant');
+
+// Update content as chunks arrive
+for await (const chunk of stream) {
+  accumulatedContent += chunk;
+  conversation = updateStreamingMessage(conversation, messageId, accumulatedContent);
+}
+
+// Finalize when complete
+conversation = finalizeStreamingMessage(conversation, messageId, {
+  tokenUsage: { prompt: 100, completion: 50, total: 150 },
+});
+
+// Or cancel if needed
+conversation = cancelStreamingMessage(conversation, messageId);
+```
+
+## Context Window Utilities
+
+Manage token limits and message truncation:
+
+```typescript
+import {
+  getRecentMessages,
+  truncateFromPosition,
+  truncateToTokenLimit,
+  estimateConversationTokens,
+  simpleTokenEstimator,
+} from 'conversationalist';
+
+// Get last N messages (excluding system by default)
+const recent = getRecentMessages(conversation, 10);
+
+// Truncate to messages from position onwards
+const truncated = truncateFromPosition(conversation, 5);
+
+// Truncate to fit token limit
+const fitted = truncateToTokenLimit(conversation, 4000, simpleTokenEstimator, {
+  preserveSystemMessages: true,
+  preserveLastN: 2,
+});
+
+// Estimate total tokens
+const tokens = estimateConversationTokens(conversation, simpleTokenEstimator);
+```
+
+## Types
+
+```typescript
+import type {
+  Conversation,
+  ConversationJSON,
+  ConversationStatus,
+  Message,
+  MessageInput,
+  MessageJSON,
+  MessageRole,
+  TokenUsage,
+  ToolCall,
+  ToolResult,
+  MultiModalContent,
+  TextContent,
+  ImageContent,
+} from 'conversationalist';
+```
+
+## Validation Schemas
+
+Zod schemas are exported for runtime validation:
+
+```typescript
+import {
+  conversationSchema,
+  messageInputSchema,
+  messageJSONSchema,
+  messageRoleSchema,
+  multiModalContentSchema,
+  tokenUsageSchema,
+  toolCallSchema,
+  toolResultSchema,
+} from 'conversationalist';
+
+const result = messageInputSchema.safeParse(data);
+```
+
+## Error Handling
+
+Custom error types with codes:
+
+```typescript
+import {
+  ConversationalistError,
+  createInvalidInputError,
+  createInvalidPositionError,
+  createNotFoundError,
+  createValidationError,
+} from 'conversationalist';
+
+try {
+  // ...
+} catch (error) {
+  if (error instanceof ConversationalistError) {
+    console.log(error.code); // e.g., 'INVALID_POSITION'
   }
 }
 ```
 
-## Template Setup (bun-create)
+## Development
 
-When using `bun create` with this template, a postinstall sequence runs once to bootstrap the project:
+```bash
+bun install
+bun test
+bun run typecheck
+bun run lint
+bun run build
+```
 
-- Sets `package.json:name` from the folder name
-- Copies `.env.example` to `.env` (or appends missing keys)
-- Writes `OPEN_AI_API_KEY`, `ANTHROPIC_AI_API_KEY`, and `GEMINI_AI_API_KEY` from your shell into `.env` if present
-- Runs `bun run prepare` to install Husky
-- Cleans up setup scripts and removes the `bun-create` entry from `package.json`
+## License
 
-These steps self-delete after running; you can adjust them by editing files in `scripts/setup/` before the first install.
+MIT

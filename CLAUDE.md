@@ -101,16 +101,16 @@ Prettier plus import sorting keeps imports consistent. A common order is:
 
 When possible, use Bun's native APIs instead of Node.js equivalents. Bun's APIs are optimized for performance and often have a simpler interface.
 
-| Task | Use (Bun) | Avoid (Node) |
-|------|-----------|--------------|
-| Read file | `Bun.file(path).text()` | `fs.readFileSync(path, 'utf-8')` |
-| Write file | `Bun.write(path, data)` | `fs.writeFileSync(path, data)` |
-| HTTP server | `Bun.serve()` | `http.createServer()` or Express |
-| Hashing | `Bun.hash()` or `new Bun.CryptoHasher()` | `crypto.createHash()` |
-| Spawn process | `Bun.spawn()` or `Bun.$` | `child_process.spawn()` |
-| Sleep | `Bun.sleep(ms)` | `setTimeout` with promisify |
-| Environment | `Bun.env.VAR` | `process.env.VAR` |
-| Glob | `Bun.Glob` | `glob` package |
+| Task          | Use (Bun)                                | Avoid (Node)                     |
+| ------------- | ---------------------------------------- | -------------------------------- |
+| Read file     | `Bun.file(path).text()`                  | `fs.readFileSync(path, 'utf-8')` |
+| Write file    | `Bun.write(path, data)`                  | `fs.writeFileSync(path, data)`   |
+| HTTP server   | `Bun.serve()`                            | `http.createServer()` or Express |
+| Hashing       | `Bun.hash()` or `new Bun.CryptoHasher()` | `crypto.createHash()`            |
+| Spawn process | `Bun.spawn()` or `Bun.$`                 | `child_process.spawn()`          |
+| Sleep         | `Bun.sleep(ms)`                          | `setTimeout` with promisify      |
+| Environment   | `Bun.env.VAR`                            | `process.env.VAR`                |
+| Glob          | `Bun.Glob`                               | `glob` package                   |
 
 When a Bun equivalent doesn't exist or Node's API is more appropriate for the use case, use the `node:` prefix for clarity (e.g., `import { join } from 'node:path'`).
 
