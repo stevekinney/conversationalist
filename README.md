@@ -370,6 +370,41 @@ export function ChatApp() {
 }
 ```
 
+#### Custom React Hook Example
+
+For more complex applications, you can wrap the logic into a custom hook to provide a cleaner interface for your components.
+
+```tsx
+import { useState, useCallback } from 'react';
+import {
+  createConversation,
+  appendUserMessage,
+  appendAssistantMessage,
+  Conversation,
+} from 'conversationalist';
+
+export function useConversation(initialTitle?: string) {
+  const [conversation, setConversation] = useState(() =>
+    createConversation({ title: initialTitle }),
+  );
+
+  const sendMessage = useCallback((text: string) => {
+    setConversation((prev) => appendUserMessage(prev, text));
+  }, []);
+
+  const receiveMessage = useCallback((text: string) => {
+    setConversation((prev) => appendAssistantMessage(prev, text));
+  }, []);
+
+  return {
+    conversation,
+    messages: conversation.messages,
+    sendMessage,
+    receiveMessage,
+  };
+}
+```
+
 ### Using with Redux
 
 Redux requires immutable state updates, making **Conversationalist** an ideal companion. You can store the conversation object directly in your store.
