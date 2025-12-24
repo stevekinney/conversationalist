@@ -79,9 +79,15 @@ describe('OpenAI Adapter', () => {
       const messages = toOpenAIMessages(conv);
 
       expect(messages).toHaveLength(3);
-      expect(messages[0]).toEqual({ role: 'system', content: 'You are a helpful assistant.' });
+      expect(messages[0]).toEqual({
+        role: 'system',
+        content: 'You are a helpful assistant.',
+      });
       expect(messages[1]).toEqual({ role: 'user', content: 'Hello' });
-      expect(messages[2]).toEqual({ role: 'assistant', content: 'Hi there! How can I help you?' });
+      expect(messages[2]).toEqual({
+        role: 'assistant',
+        content: 'Hi there! How can I help you?',
+      });
     });
 
     it('converts tool calls to OpenAI format', () => {
@@ -112,7 +118,10 @@ describe('OpenAI Adapter', () => {
       expect(messages).toHaveLength(2);
       const userMsg = messages[0];
       expect(Array.isArray(userMsg?.content)).toBe(true);
-      expect((userMsg?.content as any)[0]).toEqual({ type: 'text', text: 'What is in this image?' });
+      expect((userMsg?.content as any)[0]).toEqual({
+        type: 'text',
+        text: 'What is in this image?',
+      });
       expect((userMsg?.content as any)[1]).toEqual({
         type: 'image_url',
         image_url: { url: 'https://example.com/image.jpg' },
@@ -135,7 +144,11 @@ describe('OpenAI Adapter', () => {
 
     it('maps developer role to system', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
-      conv = appendMessages(conv, { role: 'developer', content: 'Developer instructions' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'developer', content: 'Developer instructions' },
+        testEnvironment,
+      );
 
       const messages = toOpenAIMessages(conv);
       expect(messages[0]?.role).toBe('system');
@@ -427,7 +440,9 @@ describe('Anthropic Adapter', () => {
           Array.isArray(m.content) &&
           (m.content as any[]).some((b: any) => b.type === 'tool_result'),
       );
-      const toolResult = (userMsg?.content as any[]).find((b: any) => b.type === 'tool_result');
+      const toolResult = (userMsg?.content as any[]).find(
+        (b: any) => b.type === 'tool_result',
+      );
       expect(toolResult.is_error).toBe(true);
     });
 
@@ -488,7 +503,9 @@ describe('Anthropic Adapter', () => {
 
       const { messages } = toAnthropicMessages(conv);
       const assistantMsg = messages.find((m) => m.role === 'assistant');
-      const toolUse = (assistantMsg?.content as any[]).find((b: any) => b.type === 'tool_use');
+      const toolUse = (assistantMsg?.content as any[]).find(
+        (b: any) => b.type === 'tool_use',
+      );
       expect(toolUse.input).toEqual({ key: 'value' });
     });
 
@@ -530,7 +547,9 @@ describe('Gemini Adapter', () => {
       const { systemInstruction, contents } = toGeminiMessages(conv);
 
       expect(systemInstruction).toBeDefined();
-      expect(systemInstruction?.parts[0]).toEqual({ text: 'You are a helpful assistant.' });
+      expect(systemInstruction?.parts[0]).toEqual({
+        text: 'You are a helpful assistant.',
+      });
       expect(contents).toHaveLength(2);
     });
 
@@ -538,7 +557,9 @@ describe('Gemini Adapter', () => {
       const conv = createBasicConversation();
       const { contents } = toGeminiMessages(conv);
 
-      const assistantMsg = contents.find((c) => c.parts.some((p: any) => p.text === 'Hi there! How can I help you?'));
+      const assistantMsg = contents.find((c) =>
+        c.parts.some((p: any) => p.text === 'Hi there! How can I help you?'),
+      );
       expect(assistantMsg?.role).toBe('model');
     });
 
@@ -551,7 +572,9 @@ describe('Gemini Adapter', () => {
       );
       expect(modelContent).toBeDefined();
 
-      const functionCallPart = modelContent?.parts.find((p: any) => 'functionCall' in p) as any;
+      const functionCallPart = modelContent?.parts.find(
+        (p: any) => 'functionCall' in p,
+      ) as any;
       expect(functionCallPart.functionCall.name).toBe('get_weather');
     });
 
@@ -564,7 +587,9 @@ describe('Gemini Adapter', () => {
       );
       expect(userContent).toBeDefined();
 
-      const responsePart = userContent?.parts.find((p: any) => 'functionResponse' in p) as any;
+      const responsePart = userContent?.parts.find(
+        (p: any) => 'functionResponse' in p,
+      ) as any;
       expect(responsePart.functionResponse.name).toBe('get_weather');
     });
 
@@ -611,7 +636,13 @@ describe('Gemini Adapter', () => {
         conv,
         {
           role: 'user',
-          content: [{ type: 'image', url: 'https://example.com/image.jpg', mimeType: 'image/jpeg' }],
+          content: [
+            {
+              type: 'image',
+              url: 'https://example.com/image.jpg',
+              mimeType: 'image/jpeg',
+            },
+          ],
         },
         testEnvironment,
       );
@@ -659,7 +690,9 @@ describe('Gemini Adapter', () => {
       const modelContent = contents.find(
         (c) => c.role === 'model' && c.parts.some((p: any) => 'functionCall' in p),
       );
-      const functionCallPart = modelContent?.parts.find((p: any) => 'functionCall' in p) as any;
+      const functionCallPart = modelContent?.parts.find(
+        (p: any) => 'functionCall' in p,
+      ) as any;
       expect(functionCallPart.functionCall.args).toEqual({ _raw: 'invalid json {' });
     });
 
@@ -680,7 +713,9 @@ describe('Gemini Adapter', () => {
       const modelContent = contents.find(
         (c) => c.role === 'model' && c.parts.some((p: any) => 'functionCall' in p),
       );
-      const functionCallPart = modelContent?.parts.find((p: any) => 'functionCall' in p) as any;
+      const functionCallPart = modelContent?.parts.find(
+        (p: any) => 'functionCall' in p,
+      ) as any;
       expect(functionCallPart.functionCall.args).toEqual({ key: 'value' });
     });
 
