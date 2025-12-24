@@ -81,4 +81,20 @@ describe('ConversationHistory', () => {
     boundAppend('Hello');
     expect(history.current.messages.length).toBe(1);
   });
+
+  it('should not push non-conformant objects to history', () => {
+    const original = createConversation({ id: 'original' });
+    const history = new ConversationHistory(original);
+    // @ts-expect-error - testing runtime behavior for non-conformant object
+    const boundIncomplete = history.bind(() => ({
+      id: 'incomplete',
+      messages: [],
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+      // missing status, metadata, tags
+    }));
+
+    boundIncomplete();
+    expect(history.current.id).toBe('original'); // Should NOT have pushed the incomplete object
+  });
 });

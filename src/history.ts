@@ -106,6 +106,9 @@ function isConversation(value: unknown): value is Conversation {
     value !== null &&
     typeof value === 'object' &&
     typeof (value as Conversation).id === 'string' &&
+    typeof (value as Conversation).status === 'string' &&
+    typeof (value as Conversation).metadata === 'object' &&
+    Array.isArray((value as Conversation).tags) &&
     Array.isArray((value as Conversation).messages) &&
     typeof (value as Conversation).createdAt === 'string' &&
     typeof (value as Conversation).updatedAt === 'string'
