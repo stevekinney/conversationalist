@@ -209,6 +209,15 @@ describe('OpenAI Adapter', () => {
       const toolMsg = messages.find((m) => m.role === 'tool');
       expect(toolMsg?.content).toBe('String result');
     });
+
+    it('returns null for unknown roles in convertMessage', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      // @ts-expect-error - testing runtime behavior for invalid role
+      conv = appendMessages(conv, { role: 'unknown', content: 'blah' }, testEnvironment);
+
+      const messages = toOpenAIMessages(conv);
+      expect(messages).toHaveLength(0);
+    });
   });
 
   describe('toOpenAIMessagesGrouped', () => {
@@ -482,6 +491,35 @@ describe('Anthropic Adapter', () => {
       const toolUse = (assistantMsg?.content as any[]).find((b: any) => b.type === 'tool_use');
       expect(toolUse.input).toEqual({ key: 'value' });
     });
+
+    it('handles data URLs with missing parts', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        {
+          role: 'user',
+          content: [{ type: 'image', url: 'data:image/png;base64' }], // Invalid data URL
+        },
+        testEnvironment,
+      );
+
+      const { messages } = toAnthropicMessages(conv);
+      // If content becomes empty, the message might be skipped or have empty content
+      if (messages.length > 0) {
+        expect(messages[0].content).toEqual([]);
+      } else {
+        expect(messages).toHaveLength(0);
+      }
+    });
+
+    it('skips unknown roles', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      // @ts-expect-error - testing runtime behavior for invalid role
+      conv = appendMessages(conv, { role: 'unknown', content: 'blah' }, testEnvironment);
+
+      const { messages } = toAnthropicMessages(conv);
+      expect(messages).toHaveLength(0);
+    });
   });
 });
 
@@ -659,6 +697,63 @@ describe('Gemini Adapter', () => {
       // Empty system message results in no systemInstruction
       expect(systemInstruction).toBeUndefined();
       expect(contents).toHaveLength(1);
+    });
+
+    it('handles tool results with missing tool call names', () => {
+      // Create a conversation with a tool result but no tool-use message
+      // We have to bypass appendMessages validation, so we'll mock the conversation structure
+      const conv: Conversation = {
+        id: 'test',
+        status: 'active',
+        metadata: {},
+        tags: [],
+        messages: [
+          {
+            id: 'm1',
+            role: 'tool-result',
+            content: '',
+            position: 0,
+            createdAt: '2024-01-01T00:00:00.000Z',
+            metadata: {},
+            hidden: false,
+            toolResult: { callId: 'unknown-id', outcome: 'success', content: 'done' },
+          },
+        ],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      };
+
+      const { contents } = toGeminiMessages(conv);
+      const part = contents[0].parts[0] as any;
+      expect(part.functionResponse.name).toBe('unknown');
+    });
+
+    it('skips unknown roles', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      // @ts-expect-error - testing runtime behavior for invalid role
+      conv = appendMessages(conv, { role: 'unknown', content: 'blah' }, testEnvironment);
+
+      const { contents } = toGeminiMessages(conv);
+      expect(contents).toHaveLength(0);
+    });
+
+    it('handles data URLs with missing parts', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        {
+          role: 'user',
+          content: [{ type: 'image', url: 'data:image/png;base64' }], // Invalid data URL
+        },
+        testEnvironment,
+      );
+
+      const { contents } = toGeminiMessages(conv);
+      if (contents.length > 0) {
+        expect(contents[0].parts).toHaveLength(0);
+      } else {
+        expect(contents).toHaveLength(0);
+      }
     });
   });
 });

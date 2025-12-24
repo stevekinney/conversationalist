@@ -87,6 +87,9 @@ export {
 export type { ConversationDraft } from './with-conversation';
 export { pipeConversation, withConversation } from './with-conversation';
 
+// History utility
+export { bindToConversationHistory, ConversationHistory } from './history';
+
 // Streaming utilities
 export {
   appendStreamingMessage,
