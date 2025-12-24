@@ -97,4 +97,22 @@ describe('ConversationHistory', () => {
     boundIncomplete();
     expect(history.current.id).toBe('original'); // Should NOT have pushed the incomplete object
   });
+
+  it('should not push objects with null metadata to history', () => {
+    const original = createConversation({ id: 'original' });
+    const history = new ConversationHistory(original);
+    // @ts-expect-error - testing runtime behavior for null metadata
+    const boundWithNullMetadata = history.bind(() => ({
+      id: 'null-metadata',
+      status: 'active',
+      metadata: null,
+      tags: [],
+      messages: [],
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+    }));
+
+    boundWithNullMetadata();
+    expect(history.current.id).toBe('original'); // Should NOT have pushed the object with null metadata
+  });
 });

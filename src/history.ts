@@ -107,6 +107,7 @@ function isConversation(value: unknown): value is Conversation {
     typeof value === 'object' &&
     typeof (value as Conversation).id === 'string' &&
     typeof (value as Conversation).status === 'string' &&
+    (value as Conversation).metadata !== null &&
     typeof (value as Conversation).metadata === 'object' &&
     Array.isArray((value as Conversation).tags) &&
     Array.isArray((value as Conversation).messages) &&
