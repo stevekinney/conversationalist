@@ -341,6 +341,62 @@ history.redo(); // State advances back to "How are you?"
 console.log(history.current.messages.length); // 2
 ```
 
+## Integration
+
+### Using with React
+
+Because **Conversationalist** is immutable, it works perfectly with React's `useState` or `useReducer`. Every update returns a new reference, which automatically triggers a re-render.
+
+```tsx
+import { useState } from 'react';
+import { createConversation, appendUserMessage } from 'conversationalist';
+
+export function ChatApp() {
+  const [conversation, setConversation] = useState(() => createConversation());
+
+  const handleSend = (text: string) => {
+    // The new conversation object is set into state
+    setConversation((prev) => appendUserMessage(prev, text));
+  };
+
+  return (
+    <div>
+      {conversation.messages.map((m) => (
+        <div key={m.id}>{String(m.content)}</div>
+      ))}
+      <button onClick={() => handleSend('Hello!')}>Send</button>
+    </div>
+  );
+}
+```
+
+### Using with Redux
+
+Redux requires immutable state updates, making **Conversationalist** an ideal companion. You can store the conversation object directly in your store.
+
+```ts
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createConversation, appendUserMessage, Conversation } from 'conversationalist';
+
+interface ChatState {
+  conversation: Conversation;
+}
+
+const chatSlice = createSlice({
+  name: 'chat',
+  initialState: {
+    conversation: createConversation(),
+  } as ChatState,
+  reducers: {
+    userMessageReceived: (state, action: PayloadAction<string>) => {
+      // Redux Toolkit's createSlice uses Immer, but since appendUserMessage
+      // returns a new object, we can just replace the property.
+      state.conversation = appendUserMessage(state.conversation, action.payload);
+    },
+  },
+});
+```
+
 ## API Overview
 
 | Category         | Key Functions                                                                                            |
