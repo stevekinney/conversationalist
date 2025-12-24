@@ -380,27 +380,46 @@ import {
   createConversation,
   appendUserMessage,
   appendAssistantMessage,
-  Conversation,
+  toChatMessages,
 } from 'conversationalist';
 
-export function useConversation(initialTitle?: string) {
+export function useChat(initialTitle?: string) {
   const [conversation, setConversation] = useState(() =>
     createConversation({ title: initialTitle }),
   );
+  const [loading, setLoading] = useState(false);
 
-  const sendMessage = useCallback((text: string) => {
-    setConversation((prev) => appendUserMessage(prev, text));
-  }, []);
+  const sendMessage = useCallback(
+    async (text: string) => {
+      // 1. Append user message
+      const updated = appendUserMessage(conversation, text);
+      setConversation(updated);
+      setLoading(true);
 
-  const receiveMessage = useCallback((text: string) => {
-    setConversation((prev) => appendAssistantMessage(prev, text));
-  }, []);
+      try {
+        // 2. Call your LLM API (e.g. via your own backend)
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          body: JSON.stringify({
+            messages: toChatMessages(updated),
+          }),
+        });
+        const data = await response.json();
+
+        // 3. Append assistant response
+        setConversation((prev) => appendAssistantMessage(prev, data.answer));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [conversation],
+  );
 
   return {
     conversation,
     messages: conversation.messages,
+    loading,
     sendMessage,
-    receiveMessage,
   };
 }
 ```
