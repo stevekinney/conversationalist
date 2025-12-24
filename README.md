@@ -397,6 +397,29 @@ const chatSlice = createSlice({
 });
 ```
 
+### Using with Svelte (Runes)
+
+In Svelte 5, you can manage conversation state using the `$state` rune. Since **Conversationalist** is immutable, you update the state by re-assigning the variable with a new conversation object.
+
+```svelte
+<script lang="ts">
+  import { createConversation, appendUserMessage } from 'conversationalist';
+
+  let conversation = $state(createConversation());
+
+  function handleSend(text: string) {
+    conversation = appendUserMessage(conversation, text);
+  }
+</script>
+
+<div>
+  {#each conversation.messages as m (m.id)}
+    <div>{String(m.content)}</div>
+  {/each}
+  <button onclick={() => handleSend('Hello!')}>Send</button>
+</div>
+```
+
 ## API Overview
 
 | Category         | Key Functions                                                                                            |
