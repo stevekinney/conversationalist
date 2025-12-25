@@ -65,3 +65,13 @@ export function isConversationEnvironmentParameter(
     (Array.isArray(candidate['plugins']) && candidate['plugins'].length > 0)
   );
 }
+
+/**
+ * Binds a partial environment to a function that accepts an environment as its last argument.
+ */
+export function withEnvironment<T extends unknown[], R>(
+  environment: Partial<ConversationEnvironment>,
+  fn: (...args: [...T, Partial<ConversationEnvironment>?]) => R,
+): (...args: T) => R {
+  return (...args: T) => fn(...args, environment);
+}

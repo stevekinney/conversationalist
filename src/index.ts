@@ -57,6 +57,7 @@ export {
   serializeConversation,
   toChatMessages,
 } from './conversation';
+export { withEnvironment } from './environment';
 
 // Message helpers
 export { createMessage } from './utilities';
@@ -109,10 +110,3 @@ export {
   truncateFromPosition,
   truncateToTokenLimit,
 } from './context';
-
-// Plugins
-export {
-  createPIIRedaction,
-  createPIIRedactionPlugin,
-  piiRedactionPlugin,
-} from './plugins/pii-redaction';

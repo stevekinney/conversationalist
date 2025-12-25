@@ -4,9 +4,11 @@ import {
   appendMessages,
   ConversationHistory,
   createConversation,
+} from '../src';
+import {
   createPIIRedactionPlugin,
   piiRedactionPlugin,
-} from '../src';
+} from '../src/plugins';
 
 describe('piiRedactionPlugin', () => {
   it('should redact emails', () => {
