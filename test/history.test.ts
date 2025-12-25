@@ -39,16 +39,59 @@ describe('ConversationHistory', () => {
     expect(history.current).toBe(v2);
   });
 
-  it('should truncate redo history when pushing a new state', () => {
-    const history = new ConversationHistory(createConversation({ title: 'V1' }));
-    history.push(appendUserMessage(history.current, 'V2'));
-    history.undo();
+  it('should support branching and switching between branches', () => {
+    const v1 = createConversation({ title: 'V1' });
+    const history = new ConversationHistory(v1);
 
-    const v3 = appendUserMessage(history.current, 'V3');
+    const v2 = appendUserMessage(v1, 'Message 2');
+    history.push(v2);
+
+    history.undo(); // back to v1
+
+    const v3 = appendUserMessage(v1, 'Message 3');
+    history.push(v3); // Creates a second branch from v1
+
+    expect(history.current).toBe(v3);
+    expect(history.branchCount).toBe(2);
+    expect(history.branchIndex).toBe(1);
+
+    history.switchToBranch(0);
+    expect(history.current).toBe(v2);
+    expect(history.branchIndex).toBe(0);
+
+    history.undo();
+    expect(history.current).toBe(v1);
+    expect(history.redo(1)).toBe(v3);
+  });
+
+  it('should return path to current state', () => {
+    const v1 = createConversation({ title: 'V1' });
+    const history = new ConversationHistory(v1);
+    const v2 = appendUserMessage(v1, 'V2');
+    history.push(v2);
+    const v3 = appendUserMessage(v2, 'V3');
     history.push(v3);
 
-    expect(history.canRedo).toBe(false);
+    const path = history.getPath();
+    expect(path).toEqual([v1, v2, v3]);
+  });
+
+  it('should add a new branch instead of truncating history', () => {
+    const history = new ConversationHistory(createConversation({ title: 'V1' }));
+    const v1 = history.current;
+    const v2 = appendUserMessage(v1, 'V2');
+    history.push(v2);
+    history.undo();
+
+    const v3 = appendUserMessage(v1, 'V3');
+    history.push(v3);
+
     expect(history.current).toBe(v3);
+    expect(history.branchCount).toBe(2);
+
+    history.undo();
+    expect(history.canRedo).toBe(true);
+    expect(history.redo(0)).toBe(v2);
   });
 
   it('should bind functions and automatically push updates', () => {
@@ -87,13 +130,16 @@ describe('ConversationHistory', () => {
   it('should not push non-conformant objects to history', () => {
     const original = createConversation({ id: 'original' });
     const history = new ConversationHistory(original);
-    const boundIncomplete = history.bind(() => ({
-      id: 'incomplete',
-      messages: [],
-      createdAt: '2024-01-01T00:00:00.000Z',
-      updatedAt: '2024-01-01T00:00:00.000Z',
-      // missing status, metadata, tags
-    }) as any);
+    const boundIncomplete = history.bind(
+      () =>
+        ({
+          id: 'incomplete',
+          messages: [],
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+          // missing status, metadata, tags
+        }) as any,
+    );
 
     boundIncomplete();
     expect(history.current.id).toBe('original'); // Should NOT have pushed the incomplete object
@@ -102,15 +148,18 @@ describe('ConversationHistory', () => {
   it('should not push objects with null metadata to history', () => {
     const original = createConversation({ id: 'original' });
     const history = new ConversationHistory(original);
-    const boundWithNullMetadata = history.bind(() => ({
-      id: 'null-metadata',
-      status: 'active',
-      metadata: null,
-      tags: [],
-      messages: [],
-      createdAt: '2024-01-01T00:00:00.000Z',
-      updatedAt: '2024-01-01T00:00:00.000Z',
-    }) as any);
+    const boundWithNullMetadata = history.bind(
+      () =>
+        ({
+          id: 'null-metadata',
+          status: 'active',
+          metadata: null,
+          tags: [],
+          messages: [],
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        }) as any,
+    );
 
     boundWithNullMetadata();
     expect(history.current.id).toBe('original'); // Should NOT have pushed the object with null metadata
@@ -149,5 +198,31 @@ describe('ConversationHistory', () => {
     history.push(appendUserMessage(history.current, 'World'));
 
     expect(boundEstimate()).toBe(200);
+  });
+
+  it('should return 0 for redoCount on a leaf node', () => {
+    const history = new ConversationHistory(createConversation());
+    expect(history.redoCount).toBe(0);
+  });
+
+  it('should return undefined when undo is not possible', () => {
+    const history = new ConversationHistory(createConversation());
+    expect(history.undo()).toBeUndefined();
+  });
+
+  it('should return undefined when redo is not possible', () => {
+    const history = new ConversationHistory(createConversation());
+    expect(history.redo()).toBeUndefined();
+  });
+
+  it('should return undefined when switching to non-existent branch', () => {
+    const history = new ConversationHistory(createConversation());
+    expect(history.switchToBranch(1)).toBeUndefined();
+  });
+
+  it('should return 1 for branchCount and 0 for branchIndex on root node', () => {
+    const history = new ConversationHistory(createConversation());
+    expect(history.branchCount).toBe(1);
+    expect(history.branchIndex).toBe(0);
   });
 });

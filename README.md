@@ -347,7 +347,7 @@ const conversation = withConversation(createConversation(), (draft) => {
 
 Use the `ConversationHistory` class to manage a stack of conversation states. Because every change returns a new immutable object, supporting undo/redo is built into the architecture.
 
-```ts
+````ts
 import {
   ConversationHistory,
   createConversation,
@@ -366,7 +366,27 @@ history.undo(); // State reverts to just "Hello!"
 history.redo(); // State advances back to "How are you?"
 
 console.log(history.current.messages.length); // 2
-```
+
+### Conversation Branching
+
+The `ConversationHistory` class supports branching. When you undo to a previous state and push a new update, it creates an alternate path instead of deleting the old history.
+
+```ts
+const history = new ConversationHistory(createConversation());
+
+history.push(appendUserMessage(history.current, "Path A"));
+history.undo();
+
+history.push(appendUserMessage(history.current, "Path B"));
+
+console.log(history.branchCount); // 2
+console.log(history.current.messages[0].content); // "Path B"
+
+history.switchToBranch(0);
+console.log(history.current.messages[0].content); // "Path A"
+````
+
+````
 
 ## Integration
 
@@ -395,7 +415,7 @@ export function ChatApp() {
     </div>
   );
 }
-```
+````
 
 #### Custom React Hook Example
 

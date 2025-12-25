@@ -141,6 +141,23 @@ describe('truncateFromPosition', () => {
       expect(m.position).toBe(i);
     });
   });
+
+  it('handles multi-modal content in truncateFromPosition', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(
+      conv,
+      { role: 'user', content: 'Msg 1' },
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'Msg 2' }],
+      },
+      testEnvironment,
+    );
+
+    const truncated = truncateFromPosition(conv, 1, undefined, testEnvironment);
+    expect(truncated.messages).toHaveLength(1);
+    expect(Array.isArray(truncated.messages[0].content)).toBe(true);
+  });
 });
 
 describe('estimateConversationTokens', () => {
@@ -401,6 +418,14 @@ describe('truncateToTokenLimit', () => {
     conv = appendMessages(conv, { role: 'user', content: 'Hello world' });
 
     const truncated = truncateToTokenLimit(conv, 1);
+    expect(truncated.messages.length).toBe(0);
+  });
+
+  it('accepts a function as the third argument (overload)', () => {
+    let conv = createConversation({ id: 'test' });
+    conv = appendMessages(conv, { role: 'user', content: 'Hello' });
+
+    const truncated = truncateToTokenLimit(conv, 1, () => 100);
     expect(truncated.messages.length).toBe(0);
   });
 });

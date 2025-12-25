@@ -4,38 +4,47 @@ import {
 } from './environment';
 import type { Conversation } from './types';
 
+interface HistoryNode {
+  conversation: Conversation;
+  parent: HistoryNode | null;
+  children: HistoryNode[];
+}
+
 /**
- * Manages a stack of conversation versions to support undo and redo.
+ * Manages a stack of conversation versions to support undo, redo, and branching.
  */
 export class ConversationHistory {
-  private versions: Conversation[] = [];
-  private index: number = -1;
+  private currentNode: HistoryNode;
   private environment: ConversationEnvironment;
 
   constructor(initial: Conversation, environment?: Partial<ConversationEnvironment>) {
     this.environment = resolveConversationEnvironment(environment);
-    this.push(initial);
+    this.currentNode = {
+      conversation: initial,
+      parent: null,
+      children: [],
+    };
   }
 
   /**
    * The current conversation state.
    */
   get current(): Conversation {
-    return this.versions[this.index]!;
+    return this.currentNode.conversation;
   }
 
   /**
    * Whether an undo operation is possible.
    */
   get canUndo(): boolean {
-    return this.index > 0;
+    return this.currentNode.parent !== null;
   }
 
   /**
    * Whether a redo operation is possible.
    */
   get canRedo(): boolean {
-    return this.index < this.versions.length - 1;
+    return this.currentNode.children.length > 0;
   }
 
   /**
@@ -46,14 +55,39 @@ export class ConversationHistory {
   }
 
   /**
+   * Returns the number of branches available at the current level.
+   */
+  get branchCount(): number {
+    return this.currentNode.parent ? this.currentNode.parent.children.length : 1;
+  }
+
+  /**
+   * Returns the index of the current branch at this level.
+   */
+  get branchIndex(): number {
+    if (!this.currentNode.parent) return 0;
+    return this.currentNode.parent.children.indexOf(this.currentNode);
+  }
+
+  /**
+   * Returns the number of alternate paths available from the current state.
+   */
+  get redoCount(): number {
+    return this.currentNode.children.length;
+  }
+
+  /**
    * Pushes a new conversation state onto the history.
-   * Any future versions (from redo) are cleared.
+   * If the current state is not a leaf, a new branch is created.
    */
   push(next: Conversation): void {
-    // If we're pushing a new state, we truncate any redo history
-    this.versions = this.versions.slice(0, this.index + 1);
-    this.versions.push(next);
-    this.index++;
+    const newNode: HistoryNode = {
+      conversation: next,
+      parent: this.currentNode,
+      children: [],
+    };
+    this.currentNode.children.push(newNode);
+    this.currentNode = newNode;
   }
 
   /**
@@ -61,8 +95,8 @@ export class ConversationHistory {
    * @returns The conversation state after undo, or undefined if not possible.
    */
   undo(): Conversation | undefined {
-    if (this.canUndo) {
-      this.index--;
+    if (this.currentNode.parent) {
+      this.currentNode = this.currentNode.parent;
       return this.current;
     }
     return undefined;
@@ -70,14 +104,45 @@ export class ConversationHistory {
 
   /**
    * Advances to the next conversation state.
+   * @param childIndex - The index of the branch to follow (default: 0).
    * @returns The conversation state after redo, or undefined if not possible.
    */
-  redo(): Conversation | undefined {
-    if (this.canRedo) {
-      this.index++;
+  redo(childIndex: number = 0): Conversation | undefined {
+    const next = this.currentNode.children[childIndex];
+    if (next) {
+      this.currentNode = next;
       return this.current;
     }
     return undefined;
+  }
+
+  /**
+   * Switches to a different branch at the current level.
+   * @param index - The index of the sibling branch to switch to.
+   * @returns The new conversation state, or undefined if not possible.
+   */
+  switchToBranch(index: number): Conversation | undefined {
+    if (this.currentNode.parent) {
+      const target = this.currentNode.parent.children[index];
+      if (target) {
+        this.currentNode = target;
+        return this.current;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Returns the sequence of conversations from root to current.
+   */
+  getPath(): Conversation[] {
+    const path: Conversation[] = [];
+    let curr: HistoryNode | null = this.currentNode;
+    while (curr) {
+      path.unshift(curr.conversation);
+      curr = curr.parent;
+    }
+    return path;
   }
 
   /**
