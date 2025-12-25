@@ -185,10 +185,37 @@ Automatically trim history to fit token budgets or to keep only recent messages.
 ```ts
 import { simpleTokenEstimator, truncateToTokenLimit } from 'conversationalist';
 
-conversation = truncateToTokenLimit(conversation, 4000, simpleTokenEstimator, {
+conversation = truncateToTokenLimit(conversation, 4000, {
   preserveSystemMessages: true,
   preserveLastN: 2,
 });
+```
+
+#### Custom Token Counters
+
+You can provide a custom token estimator (e.g. using `tiktoken` or `anthropic-tokenizer`) by passing it in the options or by binding it to your environment.
+
+```ts
+import { truncateToTokenLimit } from 'conversationalist';
+// import { get_encoding } from 'tiktoken';
+
+const tiktokenEstimator = (message) => {
+  // Your logic here...
+  return 100;
+};
+
+// 1. Pass directly in options
+conversation = truncateToTokenLimit(conversation, 4000, {
+  estimateTokens: tiktokenEstimator,
+});
+
+// 2. Or bind to a history instance/environment
+const history = new ConversationHistory(conversation, {
+  estimateTokens: tiktokenEstimator,
+});
+
+const boundTruncate = history.bind(truncateToTokenLimit);
+boundTruncate(4000); // Uses tiktokenEstimator automatically
 ```
 
 ## Provider Adapters

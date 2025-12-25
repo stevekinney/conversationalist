@@ -157,6 +157,22 @@ describe('estimateConversationTokens', () => {
     // simpleTokenEstimator uses ~4 chars per token
     expect(tokens).toBeGreaterThan(0);
   });
+
+  it('uses estimator from environment when only environment is provided', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(conv, { role: 'user', content: 'Hello world' }, testEnvironment);
+
+    const tokens = estimateConversationTokens(conv, testEnvironment);
+    expect(tokens).toBe(3); // 'Hello world' is 11 chars -> 3 tokens
+  });
+
+  it('uses default estimator when no estimator or environment is provided', () => {
+    let conv = createConversation({ id: 'test' });
+    conv = appendMessages(conv, { role: 'user', content: 'Hello world' });
+
+    const tokens = estimateConversationTokens(conv);
+    expect(tokens).toBe(3);
+  });
 });
 
 describe('simpleTokenEstimator', () => {
@@ -182,7 +198,7 @@ describe('truncateToTokenLimit', () => {
     let conv = createConversation({ id: 'test' }, testEnvironment);
     conv = appendMessages(conv, { role: 'user', content: 'Hi' }, testEnvironment);
 
-    const truncated = truncateToTokenLimit(conv, 1000, simpleTokenEstimator, undefined, testEnvironment);
+    const truncated = truncateToTokenLimit(conv, 1000, { estimateTokens: simpleTokenEstimator }, testEnvironment);
     expect(truncated.messages).toHaveLength(conv.messages.length);
   });
 
@@ -198,7 +214,7 @@ describe('truncateToTokenLimit', () => {
     );
 
     // Set a low token limit that can't fit all messages
-    const truncated = truncateToTokenLimit(conv, 10, simpleTokenEstimator, undefined, testEnvironment);
+    const truncated = truncateToTokenLimit(conv, 10, { estimateTokens: simpleTokenEstimator }, testEnvironment);
     expect(truncated.messages.length).toBeLessThan(conv.messages.length);
   });
 
@@ -212,7 +228,7 @@ describe('truncateToTokenLimit', () => {
       testEnvironment,
     );
 
-    const truncated = truncateToTokenLimit(conv, 5, simpleTokenEstimator, undefined, testEnvironment);
+    const truncated = truncateToTokenLimit(conv, 5, { estimateTokens: simpleTokenEstimator }, testEnvironment);
     expect(truncated.messages.some((m) => m.role === 'system')).toBe(true);
   });
 
@@ -230,8 +246,10 @@ describe('truncateToTokenLimit', () => {
     const truncated = truncateToTokenLimit(
       conv,
       10,
-      simpleTokenEstimator,
-      { preserveLastN: 2 },
+      {
+        estimateTokens: simpleTokenEstimator,
+        preserveLastN: 2,
+      },
       testEnvironment,
     );
 
@@ -257,8 +275,10 @@ describe('truncateToTokenLimit', () => {
     const truncated = truncateToTokenLimit(
       conv,
       1, // Very low limit
-      simpleTokenEstimator,
-      { preserveLastN: 2 },
+      {
+        estimateTokens: simpleTokenEstimator,
+        preserveLastN: 2,
+      },
       testEnvironment,
     );
 
@@ -289,8 +309,10 @@ describe('truncateToTokenLimit', () => {
     const truncated = truncateToTokenLimit(
       conv,
       1, // Very low limit to trigger the special path
-      simpleTokenEstimator,
-      { preserveLastN: 1 },
+      {
+        estimateTokens: simpleTokenEstimator,
+        preserveLastN: 1,
+      },
       testEnvironment,
     );
 
@@ -321,8 +343,10 @@ describe('truncateToTokenLimit', () => {
     const truncated = truncateToTokenLimit(
       conv,
       1, // Very low limit
-      simpleTokenEstimator,
-      { preserveLastN: 2 },
+      {
+        estimateTokens: simpleTokenEstimator,
+        preserveLastN: 2,
+      },
       testEnvironment,
     );
 
@@ -347,8 +371,10 @@ describe('truncateToTokenLimit', () => {
     const truncated = truncateToTokenLimit(
       conv,
       1, // Very low limit
-      simpleTokenEstimator,
-      { preserveLastN: 1 },
+      {
+        estimateTokens: simpleTokenEstimator,
+        preserveLastN: 1,
+      },
       testEnvironment,
     );
 
@@ -357,5 +383,24 @@ describe('truncateToTokenLimit', () => {
     if (assistantMsg) {
       expect(assistantMsg.tokenUsage).toBeDefined();
     }
+  });
+
+  it('works with a plain options object (not environment)', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(conv, { role: 'user', content: 'Hello' }, testEnvironment);
+    conv = appendMessages(conv, { role: 'assistant', content: 'World' }, testEnvironment);
+
+    // Tokens: Hello (2) + World (2) = 4
+    const truncated = truncateToTokenLimit(conv, 2, { preserveLastN: 1 });
+    expect(truncated.messages.length).toBe(1);
+    expect(truncated.messages[0].content).toBe('World');
+  });
+
+  it('works with no options or estimator provided', () => {
+    let conv = createConversation({ id: 'test' });
+    conv = appendMessages(conv, { role: 'user', content: 'Hello world' });
+
+    const truncated = truncateToTokenLimit(conv, 1);
+    expect(truncated.messages.length).toBe(0);
   });
 });

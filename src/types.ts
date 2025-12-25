@@ -92,3 +92,8 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * A function that estimates the number of tokens in a message.
+ */
+export type TokenEstimator = (message: Message) => number;

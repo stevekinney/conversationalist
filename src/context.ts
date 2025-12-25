@@ -2,10 +2,14 @@ import type { MultiModalContent } from '@lasercat/homogenaize';
 
 import {
   type ConversationEnvironment,
+  isConversationEnvironmentParameter,
   resolveConversationEnvironment,
+  simpleTokenEstimator,
 } from './environment';
-import type { Conversation, Message } from './types';
-import { createMessage, messageText, toReadonly } from './utilities';
+import type { Conversation, Message, TokenEstimator } from './types';
+import { createMessage, toReadonly } from './utilities';
+
+export { simpleTokenEstimator };
 
 /**
  * Returns the last N messages from the conversation.
@@ -83,50 +87,79 @@ export function truncateFromPosition(
 
 /**
  * Estimates total tokens in a conversation using the provided estimator function.
+ * If no estimator is provided, the environment's default estimator is used.
  */
 export function estimateConversationTokens(
   conversation: Conversation,
-  estimateTokens: (message: Message) => number,
+  estimateTokens?: TokenEstimator,
+  environment?: Partial<ConversationEnvironment>,
 ): number {
+  let estimator = estimateTokens;
+  let env = environment;
+
+  if (estimateTokens && isConversationEnvironmentParameter(estimateTokens)) {
+    env = estimateTokens;
+    estimator = undefined;
+  }
+
+  const resolvedEnvironment = resolveConversationEnvironment(env);
+  const finalEstimator = estimator ?? resolvedEnvironment.estimateTokens;
+
   return conversation.messages.reduce(
-    (total, message) => total + estimateTokens(message),
+    (total, message) => total + finalEstimator(message),
     0,
   );
 }
 
 /**
- * Simple character-based token estimator.
- * Approximates ~4 characters per token (rough average for English text).
+ * Options for truncateToTokenLimit.
  */
-export function simpleTokenEstimator(message: Message): number {
-  const text = messageText(message);
-  return Math.ceil(text.length / 4);
+export interface TruncateOptions {
+  estimateTokens?: TokenEstimator;
+  preserveSystemMessages?: boolean;
+  preserveLastN?: number;
 }
 
 /**
  * Truncates conversation to fit within an estimated token limit.
  * Removes oldest messages first while preserving system messages and optionally the last N messages.
+ * If no estimator is provided, the environment's default estimator is used.
  */
 export function truncateToTokenLimit(
   conversation: Conversation,
   maxTokens: number,
-  estimateTokens: (message: Message) => number,
-  options?: {
-    preserveSystemMessages?: boolean;
-    preserveLastN?: number;
-  },
+  optionsOrEstimator?: TruncateOptions | TokenEstimator,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  const preserveSystem = options?.preserveSystemMessages ?? true;
-  const preserveLastN = options?.preserveLastN ?? 0;
+  // Handle overloaded arguments
+  let options: TruncateOptions = {};
+  let env = environment;
+
+  if (typeof optionsOrEstimator === 'function') {
+    options = { estimateTokens: optionsOrEstimator };
+  } else if (optionsOrEstimator) {
+    options = optionsOrEstimator;
+    // If we're coming from history.bind, the environment might be passed as optionsOrEstimator
+    if (isConversationEnvironmentParameter(optionsOrEstimator)) {
+      env = optionsOrEstimator;
+    }
+  }
+
+  const resolvedEnvironment = resolveConversationEnvironment(env);
+  const estimator = options.estimateTokens ?? resolvedEnvironment.estimateTokens;
+  const preserveSystem = options.preserveSystemMessages ?? true;
+  const preserveLastN = options.preserveLastN ?? 0;
 
   // Calculate current token count
-  const currentTokens = estimateConversationTokens(conversation, estimateTokens);
+  const currentTokens = estimateConversationTokens(
+    conversation,
+    estimator,
+    resolvedEnvironment,
+  );
   if (currentTokens <= maxTokens) {
     return conversation;
   }
 
-  const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
 
   // Separate messages into categories
@@ -144,11 +177,8 @@ export function truncateToTokenLimit(
     preserveLastN > 0 ? nonSystemMessages.slice(0, -preserveLastN) : nonSystemMessages;
 
   // Calculate tokens for protected content
-  const systemTokens = systemMessages.reduce((sum, m) => sum + estimateTokens(m), 0);
-  const protectedTokens = protectedMessages.reduce(
-    (sum, m) => sum + estimateTokens(m),
-    0,
-  );
+  const systemTokens = systemMessages.reduce((sum, m) => sum + estimator(m), 0);
+  const protectedTokens = protectedMessages.reduce((sum, m) => sum + estimator(m), 0);
   const availableTokens = maxTokens - systemTokens - protectedTokens;
 
   if (availableTokens <= 0) {
@@ -186,7 +216,7 @@ export function truncateToTokenLimit(
 
   for (let i = removableMessages.length - 1; i >= 0; i--) {
     const message = removableMessages[i]!;
-    const messageTokens = estimateTokens(message);
+    const messageTokens = estimator(message);
     if (usedTokens + messageTokens <= availableTokens) {
       keptRemovable.unshift(message);
       usedTokens += messageTokens;

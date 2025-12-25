@@ -6,6 +6,8 @@ import {
   computeConversationStatistics,
   ConversationHistory,
   createConversation,
+  estimateConversationTokens,
+  truncateToTokenLimit,
 } from '../src';
 
 describe('ConversationHistory', () => {
@@ -71,7 +73,7 @@ describe('ConversationHistory', () => {
 
     const stats = boundStats();
     expect(stats.total).toBe(0);
-    expect(history.versions.length).toBe(1); // Should not have pushed
+    expect(history.current.messages.length).toBe(0); // Should not have pushed
   });
 
   it('should work with bindToConversationHistory utility', () => {
@@ -85,14 +87,13 @@ describe('ConversationHistory', () => {
   it('should not push non-conformant objects to history', () => {
     const original = createConversation({ id: 'original' });
     const history = new ConversationHistory(original);
-    // @ts-expect-error - testing runtime behavior for non-conformant object
     const boundIncomplete = history.bind(() => ({
       id: 'incomplete',
       messages: [],
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
       // missing status, metadata, tags
-    }));
+    }) as any);
 
     boundIncomplete();
     expect(history.current.id).toBe('original'); // Should NOT have pushed the incomplete object
@@ -101,7 +102,6 @@ describe('ConversationHistory', () => {
   it('should not push objects with null metadata to history', () => {
     const original = createConversation({ id: 'original' });
     const history = new ConversationHistory(original);
-    // @ts-expect-error - testing runtime behavior for null metadata
     const boundWithNullMetadata = history.bind(() => ({
       id: 'null-metadata',
       status: 'active',
@@ -110,9 +110,44 @@ describe('ConversationHistory', () => {
       messages: [],
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
-    }));
+    }) as any);
 
     boundWithNullMetadata();
     expect(history.current.id).toBe('original'); // Should NOT have pushed the object with null metadata
+  });
+
+  it('should use custom token estimator from environment when bound', () => {
+    const customEstimator = () => 100; // Every message is 100 tokens
+    const history = new ConversationHistory(createConversation(), {
+      estimateTokens: customEstimator,
+    });
+
+    const boundTruncate = history.bind(truncateToTokenLimit);
+
+    history.push(appendUserMessage(history.current, 'Hello'));
+    history.push(appendUserMessage(history.current, 'World'));
+
+    // 2 messages + initial = 3 * 100 = 300 tokens
+    // Truncate to 150 should leave 1 message + initial (if initial is empty/0 tokens, but we said every message is 100)
+    // Wait, createConversation creates 0 messages.
+    // So 2 messages * 100 = 200 tokens.
+    // Truncate to 150 should leave 1 message.
+
+    boundTruncate(150);
+    expect(history.current.messages.length).toBe(1);
+  });
+
+  it('should use custom token estimator from environment for estimateConversationTokens when bound', () => {
+    const customEstimator = () => 100;
+    const history = new ConversationHistory(createConversation(), {
+      estimateTokens: customEstimator,
+    });
+
+    const boundEstimate = history.bind(estimateConversationTokens);
+
+    history.push(appendUserMessage(history.current, 'Hello'));
+    history.push(appendUserMessage(history.current, 'World'));
+
+    expect(boundEstimate()).toBe(200);
   });
 });

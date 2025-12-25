@@ -164,7 +164,7 @@ describe('withConversation context window management', () => {
         .appendAssistantMessage('Response one')
         .appendUserMessage('Short')
         .appendAssistantMessage('Response two')
-        .truncateToTokenLimit(10, simpleTokenEstimator);
+        .truncateToTokenLimit(10, { estimateTokens: simpleTokenEstimator });
     });
 
     expect(result.messages.length).toBeLessThan(4);
@@ -178,7 +178,10 @@ describe('withConversation context window management', () => {
         .appendAssistantMessage('Old response')
         .appendUserMessage('New message')
         .appendAssistantMessage('New response')
-        .truncateToTokenLimit(5, simpleTokenEstimator, { preserveLastN: 2 });
+        .truncateToTokenLimit(5, {
+          estimateTokens: simpleTokenEstimator,
+          preserveLastN: 2,
+        });
     });
 
     const lastTwo = result.messages.slice(-2);

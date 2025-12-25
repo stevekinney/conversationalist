@@ -156,13 +156,15 @@ export interface ConversationDraft {
    * Truncates the conversation to fit within a token limit.
    * Removes oldest messages first while preserving system messages and optionally the last N messages.
    * @param maxTokens - Maximum token count to target.
-   * @param estimateTokens - Function to estimate tokens per message.
-   * @param options - Options for preserving system messages and last N messages.
+   * @param options - Options for estimation and preservation.
    */
   truncateToTokenLimit: (
     maxTokens: number,
-    estimateTokens: (message: Message) => number,
-    options?: { preserveSystemMessages?: boolean; preserveLastN?: number },
+    options?: {
+      estimateTokens?: (message: Message) => number;
+      preserveSystemMessages?: boolean;
+      preserveLastN?: number;
+    },
   ) => ConversationDraft;
 }
 
@@ -239,8 +241,8 @@ function createDraft(initial: Conversation): ConversationDraft {
       current = truncateFromPosition(current, position, options);
       return draft;
     },
-    truncateToTokenLimit: (maxTokens, estimateTokens, options) => {
-      current = truncateToTokenLimit(current, maxTokens, estimateTokens, options);
+    truncateToTokenLimit: (maxTokens, options) => {
+      current = truncateToTokenLimit(current, maxTokens, options);
       return draft;
     },
   };

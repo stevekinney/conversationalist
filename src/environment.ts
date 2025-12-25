@@ -1,3 +1,6 @@
+import type { Message, TokenEstimator } from './types';
+import { messageText } from './utilities';
+
 /**
  * Environment functions for conversation operations.
  * Allows dependency injection for testing and custom ID generation.
@@ -5,14 +8,25 @@
 export interface ConversationEnvironment {
   now: () => string;
   randomId: () => string;
+  estimateTokens: TokenEstimator;
 }
 
 /**
- * Default environment using Date.toISOString() and crypto.randomUUID().
+ * Simple character-based token estimator.
+ * Approximates ~4 characters per token (rough average for English text).
+ */
+export function simpleTokenEstimator(message: Message): number {
+  const text = messageText(message);
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Default environment using Date.toISOString(), crypto.randomUUID(), and simple token estimation.
  */
 export const defaultConversationEnvironment: ConversationEnvironment = {
   now: () => new Date().toISOString(),
   randomId: () => crypto.randomUUID(),
+  estimateTokens: simpleTokenEstimator,
 };
 
 /**
@@ -25,6 +39,8 @@ export function resolveConversationEnvironment(
   return {
     now: environment?.now ?? defaultConversationEnvironment.now,
     randomId: environment?.randomId ?? defaultConversationEnvironment.randomId,
+    estimateTokens:
+      environment?.estimateTokens ?? defaultConversationEnvironment.estimateTokens,
   };
 }
 
@@ -39,5 +55,9 @@ export function isConversationEnvironmentParameter(
   if ('role' in (value as Record<string, unknown>)) return false;
 
   const candidate = value as Partial<ConversationEnvironment>;
-  return typeof candidate.now === 'function' || typeof candidate.randomId === 'function';
+  return (
+    typeof candidate.now === 'function' ||
+    typeof candidate.randomId === 'function' ||
+    typeof candidate.estimateTokens === 'function'
+  );
 }

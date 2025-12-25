@@ -1,3 +1,7 @@
+import {
+  type ConversationEnvironment,
+  resolveConversationEnvironment,
+} from './environment';
 import type { Conversation } from './types';
 
 /**
@@ -6,8 +10,10 @@ import type { Conversation } from './types';
 export class ConversationHistory {
   private versions: Conversation[] = [];
   private index: number = -1;
+  private environment: ConversationEnvironment;
 
-  constructor(initial: Conversation) {
+  constructor(initial: Conversation, environment?: Partial<ConversationEnvironment>) {
+    this.environment = resolveConversationEnvironment(environment);
     this.push(initial);
   }
 
@@ -30,6 +36,13 @@ export class ConversationHistory {
    */
   get canRedo(): boolean {
     return this.index < this.versions.length - 1;
+  }
+
+  /**
+   * Returns the environment associated with this history.
+   */
+  get env(): ConversationEnvironment {
+    return this.environment;
   }
 
   /**
@@ -73,7 +86,10 @@ export class ConversationHistory {
    * If the function returns a new Conversation, it is automatically pushed to the history.
    */
   bind<T extends unknown[], R>(
-    fn: (conversation: Conversation, ...args: T) => R,
+    fn: (
+      conversation: Conversation,
+      ...args: [...T, Partial<ConversationEnvironment>?]
+    ) => R,
   ): (...args: T) => R {
     return bindToConversationHistory(this, fn);
   }
@@ -85,10 +101,15 @@ export class ConversationHistory {
  */
 export function bindToConversationHistory<T extends unknown[], R>(
   history: ConversationHistory,
-  fn: (conversation: Conversation, ...args: T) => R,
+  fn: (
+    conversation: Conversation,
+    ...args: [...T, Partial<ConversationEnvironment>?]
+  ) => R,
 ): (...args: T) => R {
   return (...args: T): R => {
-    const result = fn(history.current, ...args);
+    // We pass the history's environment as the last argument if the function supports it
+    const boundFn = fn as (conversation: Conversation, ...args: unknown[]) => R;
+    const result = boundFn(history.current, ...args, history.env);
 
     if (isConversation(result)) {
       history.push(result);
