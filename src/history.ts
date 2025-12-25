@@ -82,13 +82,17 @@ export class ConversationHistory extends EventTarget {
 
   /**
    * Overrides addEventListener to optionally return an unsubscribe function.
+   * This is a convenience for modern frontend frameworks.
    */
   override addEventListener(
     type: string,
     callback: EventListenerOrEventListenerObject | null,
     options?: boolean | AddEventListenerOptions,
-  ): void {
+  ): void | (() => void) {
     super.addEventListener(type, callback, options);
+    if (callback) {
+      return () => this.removeEventListener(type, callback, options);
+    }
   }
 
   /**

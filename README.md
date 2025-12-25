@@ -412,10 +412,28 @@ history.appendUserMessage('Another message');
 history.redactMessageAtPosition(0);
 history.truncateToTokenLimit(4000);
 
-// Query methods are also available
+// Query methods work on the current state
 const messages = history.getMessages();
 const stats = history.getStatistics();
 const tokens = history.estimateTokens();
+
+### Event Subscription
+
+`ConversationHistory` implements `EventTarget`, allowing you to listen for changes. The `addEventListener` method returns an unsubscribe function, making it ideal for cleaning up reactive effects in Svelte 5 or React hooks.
+
+```ts
+const history = new ConversationHistory(createConversation());
+
+// addEventListener returns a convenient unsubscribe function
+const unsubscribe = history.addEventListener('change', (event) => {
+  const { type, conversation } = event.detail;
+  console.log(`History updated via ${type}`);
+});
+
+history.appendUserMessage("Hello!"); // Fires 'push' and 'change' events
+
+unsubscribe(); // Clean up when done
+```
 
 ### Conversation Branching
 
@@ -537,7 +555,7 @@ export function useChat(initialTitle?: string) {
 }
 ```
 
-> **Note**: `ConversationHistory.subscribe()` returns an unsubscribe function, which is ideal for cleaning up effects in React (`useEffect`) or Svelte.
+> **Note**: `ConversationHistory.addEventListener()` returns an unsubscribe function, which is ideal for cleaning up effects in React (`useEffect`) or Svelte.
 
 ### Using with Redux
 
@@ -649,7 +667,7 @@ export class Chat {
 }
 ```
 
-> **Note**: `ConversationHistory.subscribe()` returns an unsubscribe function, which is ideal for cleaning up reactive effects in Svelte 5 or React hooks.
+> **Note**: `ConversationHistory.addEventListener()` returns an unsubscribe function, which is ideal for cleaning up reactive effects in Svelte 5 or React hooks.
 
 ## API Overview
 

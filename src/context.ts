@@ -1,11 +1,10 @@
-import type { MultiModalContent } from '@lasercat/homogenaize';
-
 import {
   type ConversationEnvironment,
   isConversationEnvironmentParameter,
   resolveConversationEnvironment,
   simpleTokenEstimator,
 } from './environment';
+import { copyContent } from './multi-modal';
 import type { Conversation, Message, TokenEstimator } from './types';
 import { createMessage, toReadonly } from './utilities';
 
@@ -26,6 +25,7 @@ export function estimateConversationTokens(
   if (
     !environment &&
     estimateTokens &&
+    typeof estimateTokens === 'object' &&
     isConversationEnvironmentParameter(estimateTokens)
   ) {
     env = estimateTokens;
@@ -33,7 +33,8 @@ export function estimateConversationTokens(
   }
 
   const resolvedEnvironment = resolveConversationEnvironment(env);
-  const finalEstimator = estimator ?? resolvedEnvironment.estimateTokens;
+  const finalEstimator =
+    typeof estimator === 'function' ? estimator : resolvedEnvironment.estimateTokens;
 
   return conversation.messages.reduce(
     (total, message) => total + finalEstimator(message),
@@ -71,13 +72,17 @@ export function truncateToTokenLimit(
     // If environment was not explicitly passed, check if optionsOrEstimator IS the environment
     if (!environment && isConversationEnvironmentParameter(optionsOrEstimator)) {
       // Disambiguate between TruncateOptions and ConversationEnvironment.
-      // Environment should have exclusive fields like 'now', 'randomId' or 'plugins'.
-      // Options should have exclusive fields like 'preserveSystemMessages' or 'preserveLastN'.
-      const asAny = optionsOrEstimator as Record<string, unknown>;
-      const hasEnvFields = !!(asAny['now'] || asAny['randomId'] || asAny['plugins']);
+      const candidate = optionsOrEstimator as Record<string, unknown>;
+      const hasEnvFields = !!(
+        candidate['now'] ||
+        candidate['randomId'] ||
+        candidate['plugins']
+      );
 
       const hasOptionsFields = !!(
-        asAny['preserveSystemMessages'] || asAny['preserveLastN']
+        candidate['preserveSystemMessages'] ||
+        candidate['preserveLastN'] ||
+        candidate['estimateTokens']
       );
 
       if (hasEnvFields && !hasOptionsFields) {
@@ -133,8 +138,7 @@ export function truncateToTokenLimit(
       createMessage({
         id: message.id,
         role: message.role,
-        content:
-          typeof message.content === 'string' ? message.content : [...message.content],
+        content: copyContent(message.content),
         position: index,
         createdAt: message.createdAt,
         metadata: { ...message.metadata },
@@ -178,10 +182,7 @@ export function truncateToTokenLimit(
     createMessage({
       id: message.id,
       role: message.role,
-      content:
-        typeof message.content === 'string'
-          ? message.content
-          : [...(message.content as MultiModalContent[])],
+      content: copyContent(message.content),
       position: index,
       createdAt: message.createdAt,
       metadata: { ...message.metadata },
@@ -252,10 +253,7 @@ export function truncateFromPosition(
     createMessage({
       id: message.id,
       role: message.role,
-      content:
-        typeof message.content === 'string'
-          ? message.content
-          : [...(message.content as MultiModalContent[])],
+      content: copyContent(message.content),
       position: index,
       createdAt: message.createdAt,
       metadata: { ...message.metadata },
