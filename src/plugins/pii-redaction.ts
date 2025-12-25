@@ -1,43 +1,85 @@
 import type { MessageInput, MessagePlugin } from '../types';
 
-const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-const PHONE_REGEX = /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
-const API_KEY_REGEX =
-  /(?:[a-zA-Z0-9_-]*(?:api|key|secret|token|password|auth)[a-zA-Z0-9_-]*[:=]\s*["']?)([a-zA-Z0-9._-]{16,})(?:["']?)/gi;
+export const DEFAULT_PII_RULES = {
+  email: {
+    regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+    replace: '[EMAIL_REDACTED]',
+  },
+  phone: {
+    regex: /\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
+    replace: '[PHONE_REDACTED]',
+  },
+  apiKey: {
+    regex:
+      /(?:[a-zA-Z0-9_-]*(?:api|key|secret|token|password|auth)[a-zA-Z0-9_-]*[:=]\s*["']?)([a-zA-Z0-9._-]{16,})(?:["']?)/gi,
+    replace: (match: string, key: string) => match.replace(key, '[KEY_REDACTED]'),
+  },
+} as const;
 
-/**
- * Redacts PII from a string.
- */
-export function redactPII(text: string): string {
-  return text
-    .replace(API_KEY_REGEX, (match: string, key: string) =>
-      match.replace(key, '[KEY_REDACTED]'),
-    )
-    .replace(EMAIL_REGEX, '[EMAIL_REDACTED]')
-    .replace(PHONE_REGEX, '[PHONE_REDACTED]');
+export interface PIIRedactionRule {
+  regex: RegExp;
+  replace: string | ((match: string, ...groups: string[]) => string);
+}
+
+export interface PIIRedactionOptions {
+  rules?: Record<string, PIIRedactionRule>;
+  excludeRules?: string[];
 }
 
 /**
- * A plugin that redacts PII (emails, phone numbers, API keys) from message content.
+ * Creates a PII redaction function with custom rules.
  */
-export const piiRedactionPlugin: MessagePlugin = (input: MessageInput): MessageInput => {
-  if (typeof input.content === 'string') {
+export function createPIIRedaction(
+  options: PIIRedactionOptions = {},
+): (text: string) => string {
+  const rules = { ...DEFAULT_PII_RULES, ...(options.rules ?? {}) };
+  const activeRules = Object.entries(rules).filter(
+    ([name]) => !options.excludeRules?.includes(name),
+  );
+
+  return (text: string): string => {
+    let result = text;
+    for (const [, rule] of activeRules) {
+      const replacer = rule.replace;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+      result = result.replace(rule.regex, replacer as any);
+    }
+    return result;
+  };
+}
+
+/**
+ * Creates a PII redaction plugin with custom rules.
+ */
+export function createPIIRedactionPlugin(
+  options: PIIRedactionOptions = {},
+): MessagePlugin {
+  const redact = createPIIRedaction(options);
+
+  return (input: MessageInput): MessageInput => {
+    if (typeof input.content === 'string') {
+      return {
+        ...input,
+        content: redact(input.content),
+      };
+    }
+
     return {
       ...input,
-      content: redactPII(input.content),
+      content: input.content.map((part) => {
+        if (part.type === 'text' && part.text) {
+          return {
+            ...part,
+            text: redact(part.text),
+          };
+        }
+        return part;
+      }),
     };
-  }
-
-  return {
-    ...input,
-    content: input.content.map((part) => {
-      if (part.type === 'text' && part.text) {
-        return {
-          ...part,
-          text: redactPII(part.text),
-        };
-      }
-      return part;
-    }),
   };
-};
+}
+
+/**
+ * Default PII redaction plugin instance.
+ */
+export const piiRedactionPlugin = createPIIRedactionPlugin();

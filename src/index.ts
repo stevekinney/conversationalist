@@ -110,4 +110,8 @@ export {
 } from './context';
 
 // Plugins
-export { piiRedactionPlugin } from './plugins/pii-redaction';
+export {
+  createPIIRedaction,
+  createPIIRedactionPlugin,
+  piiRedactionPlugin,
+} from './plugins/pii-redaction';

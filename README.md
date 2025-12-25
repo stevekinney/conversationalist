@@ -400,16 +400,16 @@ import {
 
 const history = new ConversationHistory(createConversation());
 
-// You can bind methods to automatically update the history state
-const appendUser = history.bind(appendUserMessage);
-
-appendUser('Hello!');
-appendUser('How are you?');
+// You can use convenience methods that automatically track state
+history.appendUserMessage('Hello!');
+history.appendAssistantMessage('How are you?');
 
 history.undo(); // State reverts to just "Hello!"
 history.redo(); // State advances back to "How are you?"
 
-console.log(history.current.messages.length); // 2
+// Query methods are also available
+const messages = history.getMessages();
+const stats = history.getStatistics();
 
 ### Conversation Branching
 

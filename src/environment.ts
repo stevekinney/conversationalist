@@ -61,6 +61,7 @@ export function isConversationEnvironmentParameter(
   return (
     typeof candidate.now === 'function' ||
     typeof candidate.randomId === 'function' ||
+    typeof candidate.estimateTokens === 'function' ||
     Array.isArray(candidate.plugins)
   );
 }

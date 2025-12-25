@@ -4,6 +4,7 @@ import {
   appendMessages,
   ConversationHistory,
   createConversation,
+  createPIIRedactionPlugin,
   piiRedactionPlugin,
 } from '../src';
 
@@ -86,5 +87,40 @@ describe('piiRedactionPlugin', () => {
     boundAppend({ role: 'user', content: 'My email is test@example.com' });
 
     expect(history.current.messages[0].content).toBe('My email is [EMAIL_REDACTED]');
+  });
+
+  it('should support custom redaction rules', () => {
+    const customPlugin = createPIIRedactionPlugin({
+      rules: {
+        ssn: {
+          regex: /\d{3}-\d{2}-\d{4}/g,
+          replace: '[SSN_REDACTED]',
+        },
+      },
+    });
+
+    const env = { plugins: [customPlugin] };
+    let conv = createConversation({}, env);
+    conv = appendMessages(conv, { role: 'user', content: 'SSN: 123-45-6789' }, env);
+
+    expect(conv.messages[0].content).toBe('SSN: [SSN_REDACTED]');
+  });
+
+  it('should support excluding default rules', () => {
+    const customPlugin = createPIIRedactionPlugin({
+      excludeRules: ['email'],
+    });
+
+    const env = { plugins: [customPlugin] };
+    let conv = createConversation({}, env);
+    conv = appendMessages(
+      conv,
+      { role: 'user', content: 'Email: test@example.com, Phone: 123-456-7890' },
+      env,
+    );
+
+    expect(conv.messages[0].content).toBe(
+      'Email: test@example.com, Phone: [PHONE_REDACTED]',
+    );
   });
 });

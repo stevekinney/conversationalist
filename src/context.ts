@@ -12,80 +12,6 @@ import { createMessage, toReadonly } from './utilities';
 export { simpleTokenEstimator };
 
 /**
- * Returns the last N messages from the conversation.
- * By default excludes system messages and hidden messages.
- */
-export function getRecentMessages(
-  conversation: Conversation,
-  count: number,
-  options?: {
-    includeHidden?: boolean;
-    includeSystem?: boolean;
-  },
-): ReadonlyArray<Message> {
-  const includeHidden = options?.includeHidden ?? false;
-  const includeSystem = options?.includeSystem ?? false;
-
-  const filtered = conversation.messages.filter((m) => {
-    if (!includeHidden && m.hidden) return false;
-    if (!includeSystem && m.role === 'system') return false;
-    return true;
-  });
-
-  return filtered.slice(-count);
-}
-
-/**
- * Truncates conversation to keep only messages from the specified position onwards.
- * Optionally preserves system messages regardless of position.
- */
-export function truncateFromPosition(
-  conversation: Conversation,
-  position: number,
-  options?: {
-    preserveSystemMessages?: boolean;
-  },
-  environment?: Partial<ConversationEnvironment>,
-): Conversation {
-  const preserveSystem = options?.preserveSystemMessages ?? true;
-  const resolvedEnvironment = resolveConversationEnvironment(environment);
-  const now = resolvedEnvironment.now();
-
-  const systemMessages = preserveSystem
-    ? conversation.messages.filter((m) => m.role === 'system' && m.position < position)
-    : [];
-
-  const keptMessages = conversation.messages.filter((m) => m.position >= position);
-  const allMessages = [...systemMessages, ...keptMessages];
-
-  // Renumber positions
-  const renumbered = allMessages.map((message, index) =>
-    createMessage({
-      id: message.id,
-      role: message.role,
-      content:
-        typeof message.content === 'string'
-          ? message.content
-          : [...(message.content as MultiModalContent[])],
-      position: index,
-      createdAt: message.createdAt,
-      metadata: { ...message.metadata },
-      hidden: message.hidden,
-      toolCall: message.toolCall ? { ...message.toolCall } : undefined,
-      toolResult: message.toolResult ? { ...message.toolResult } : undefined,
-      tokenUsage: message.tokenUsage ? { ...message.tokenUsage } : undefined,
-      goalCompleted: message.goalCompleted,
-    }),
-  );
-
-  return toReadonly({
-    ...conversation,
-    messages: renumbered,
-    updatedAt: now,
-  });
-}
-
-/**
  * Estimates total tokens in a conversation using the provided estimator function.
  * If no estimator is provided, the environment's default estimator is used.
  */
@@ -97,7 +23,11 @@ export function estimateConversationTokens(
   let estimator = estimateTokens;
   let env = environment;
 
-  if (estimateTokens && isConversationEnvironmentParameter(estimateTokens)) {
+  if (
+    !environment &&
+    estimateTokens &&
+    isConversationEnvironmentParameter(estimateTokens)
+  ) {
     env = estimateTokens;
     estimator = undefined;
   }
@@ -140,7 +70,21 @@ export function truncateToTokenLimit(
   } else if (optionsOrEstimator) {
     // If environment was not explicitly passed, check if optionsOrEstimator IS the environment
     if (!environment && isConversationEnvironmentParameter(optionsOrEstimator)) {
-      env = optionsOrEstimator;
+      // Disambiguate between TruncateOptions and ConversationEnvironment.
+      // Environment should have exclusive fields like 'now', 'randomId' or 'plugins'.
+      // Options should have exclusive fields like 'preserveSystemMessages' or 'preserveLastN'.
+      const asAny = optionsOrEstimator as Record<string, unknown>;
+      const hasEnvFields = !!(asAny['now'] || asAny['randomId'] || asAny['plugins']);
+
+      const hasOptionsFields = !!(
+        asAny['preserveSystemMessages'] || asAny['preserveLastN']
+      );
+
+      if (hasEnvFields && !hasOptionsFields) {
+        env = optionsOrEstimator;
+      } else {
+        options = optionsOrEstimator;
+      }
     } else {
       options = optionsOrEstimator;
     }
@@ -190,9 +134,7 @@ export function truncateToTokenLimit(
         id: message.id,
         role: message.role,
         content:
-          typeof message.content === 'string'
-            ? message.content
-            : [...(message.content as MultiModalContent[])],
+          typeof message.content === 'string' ? message.content : [...message.content],
         position: index,
         createdAt: message.createdAt,
         metadata: { ...message.metadata },
@@ -232,6 +174,80 @@ export function truncateToTokenLimit(
   // Sort by original position then renumber
   allMessages.sort((a, b) => a.position - b.position);
 
+  const renumbered = allMessages.map((message, index) =>
+    createMessage({
+      id: message.id,
+      role: message.role,
+      content:
+        typeof message.content === 'string'
+          ? message.content
+          : [...(message.content as MultiModalContent[])],
+      position: index,
+      createdAt: message.createdAt,
+      metadata: { ...message.metadata },
+      hidden: message.hidden,
+      toolCall: message.toolCall ? { ...message.toolCall } : undefined,
+      toolResult: message.toolResult ? { ...message.toolResult } : undefined,
+      tokenUsage: message.tokenUsage ? { ...message.tokenUsage } : undefined,
+      goalCompleted: message.goalCompleted,
+    }),
+  );
+
+  return toReadonly({
+    ...conversation,
+    messages: renumbered,
+    updatedAt: now,
+  });
+}
+
+/**
+ * Returns the last N messages from the conversation.
+ * By default excludes system messages and hidden messages.
+ */
+export function getRecentMessages(
+  conversation: Conversation,
+  count: number,
+  options?: {
+    includeHidden?: boolean;
+    includeSystem?: boolean;
+  },
+): ReadonlyArray<Message> {
+  const includeHidden = options?.includeHidden ?? false;
+  const includeSystem = options?.includeSystem ?? false;
+
+  const filtered = conversation.messages.filter((m) => {
+    if (!includeHidden && m.hidden) return false;
+    if (!includeSystem && m.role === 'system') return false;
+    return true;
+  });
+
+  return filtered.slice(-count);
+}
+
+/**
+ * Truncates conversation to keep only messages from the specified position onwards.
+ * Optionally preserves system messages regardless of position.
+ */
+export function truncateFromPosition(
+  conversation: Conversation,
+  position: number,
+  options?: {
+    preserveSystemMessages?: boolean;
+  },
+  environment?: Partial<ConversationEnvironment>,
+): Conversation {
+  const preserveSystem = options?.preserveSystemMessages ?? true;
+  const resolvedEnvironment = resolveConversationEnvironment(environment);
+  const now = resolvedEnvironment.now();
+
+  const systemMessages = preserveSystem
+    ? conversation.messages.filter((m) => m.role === 'system' && m.position < position)
+    : [];
+
+  const keptMessages = conversation.messages.filter((m) => m.position >= position);
+  const allMessages = [...systemMessages, ...keptMessages];
+
+  // Renumber positions
   const renumbered = allMessages.map((message, index) =>
     createMessage({
       id: message.id,

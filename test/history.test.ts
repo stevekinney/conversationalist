@@ -225,4 +225,77 @@ describe('ConversationHistory', () => {
     expect(history.branchCount).toBe(1);
     expect(history.branchIndex).toBe(0);
   });
+
+  describe('encapsulated utility methods', () => {
+    it('should support query methods', () => {
+      let conv = createConversation({ title: 'Query' });
+      conv = appendUserMessage(conv, 'Hello');
+      const history = new ConversationHistory(conv);
+
+      expect(history.getMessages()).toHaveLength(1);
+      expect(history.getMessageAtPosition(0)?.content).toBe('Hello');
+      expect(history.getStatistics().total).toBe(1);
+      expect(history.serialize().title).toBe('Query');
+      expect(history.toChatMessages()).toHaveLength(1);
+      expect(history.estimateTokens()).toBeGreaterThan(0);
+      expect(history.getRecentMessages(1)).toHaveLength(1);
+      expect(history.hasSystemMessage()).toBe(false);
+      expect(history.getFirstSystemMessage()).toBeUndefined();
+      expect(history.getSystemMessages()).toHaveLength(0);
+      expect(history.searchMessages((m) => m.role === 'user')).toHaveLength(1);
+      expect(history.getMessageByIdentifier(conv.messages[0].id)).toBeDefined();
+    });
+
+    it('should support mutation methods', () => {
+      const history = new ConversationHistory(createConversation());
+
+      history.appendUserMessage('User msg');
+      expect(history.current.messages.length).toBe(1);
+      expect(history.canUndo).toBe(true);
+
+      history.appendAssistantMessage('Assistant msg');
+      expect(history.current.messages.length).toBe(2);
+
+      history.appendSystemMessage('System msg');
+      expect(history.current.messages.length).toBe(3);
+
+      history.prependSystemMessage('First system');
+      expect(history.current.messages[0].content).toBe('First system');
+
+      history.replaceSystemMessage('New system');
+      expect(history.getFirstSystemMessage()?.content).toBe('New system');
+
+      history.collapseSystemMessages();
+      expect(history.getSystemMessages()).toHaveLength(1);
+
+      history.redactMessageAtPosition(1, '[REDACTED]');
+      expect(history.getMessageAtPosition(1)?.content).toBe('[REDACTED]');
+
+      history.truncateFromPosition(1);
+      expect(history.current.messages.length).toBe(3); // system + messages from pos 1
+
+      history.truncateToTokenLimit(10);
+      expect(history.current.messages.length).toBeLessThan(4);
+    });
+
+    it('should support streaming mutation methods', () => {
+      const history = new ConversationHistory(createConversation());
+
+      const messageId = history.appendStreamingMessage('assistant');
+      expect(history.getStreamingMessage()?.id).toBe(messageId);
+
+      history.updateStreamingMessage(messageId, 'Partial...');
+      expect(history.current.messages[0].content).toBe('Partial...');
+
+      history.finalizeStreamingMessage(messageId, {
+        tokenUsage: { prompt: 1, completion: 1, total: 2 },
+      });
+      expect(history.getStreamingMessage()).toBeUndefined();
+      expect(history.current.messages[0].tokenUsage?.total).toBe(2);
+
+      const nextId = history.appendStreamingMessage('user');
+      history.cancelStreamingMessage(nextId);
+      expect(history.current.messages.length).toBe(1);
+    });
+  });
 });

@@ -1,8 +1,48 @@
 import {
+  estimateConversationTokens,
+  getRecentMessages,
+  truncateFromPosition,
+  type TruncateOptions,
+  truncateToTokenLimit,
+} from './context';
+import {
+  appendAssistantMessage,
+  appendMessages,
+  appendSystemMessage,
+  appendUserMessage,
+  collapseSystemMessages,
+  computeConversationStatistics,
+  getConversationMessages,
+  getFirstSystemMessage,
+  getMessageAtPosition,
+  getMessageByIdentifier,
+  getSystemMessages,
+  hasSystemMessage,
+  prependSystemMessage,
+  redactMessageAtPosition,
+  replaceSystemMessage,
+  searchConversationMessages,
+  serializeConversation,
+  toChatMessages,
+} from './conversation';
+import {
   type ConversationEnvironment,
   resolveConversationEnvironment,
 } from './environment';
-import type { Conversation } from './types';
+import {
+  appendStreamingMessage,
+  cancelStreamingMessage,
+  finalizeStreamingMessage,
+  getStreamingMessage,
+  updateStreamingMessage,
+} from './streaming';
+import type {
+  Conversation,
+  Message,
+  MessageInput,
+  TokenEstimator,
+  TokenUsage,
+} from './types';
 
 interface HistoryNode {
   conversation: Conversation;
@@ -143,6 +183,143 @@ export class ConversationHistory {
       curr = curr.parent;
     }
     return path;
+  }
+
+  // --- QUERY METHODS ---
+
+  getMessages(options?: { includeHidden?: boolean }): ReadonlyArray<Message> {
+    return getConversationMessages(this.current, options);
+  }
+
+  getMessageAtPosition(position: number): Message | undefined {
+    return getMessageAtPosition(this.current, position);
+  }
+
+  getMessageByIdentifier(id: string): Message | undefined {
+    return getMessageByIdentifier(this.current, id);
+  }
+
+  searchMessages(predicate: (m: Message) => boolean): Message[] {
+    return searchConversationMessages(this.current, predicate);
+  }
+
+  getStatistics() {
+    return computeConversationStatistics(this.current);
+  }
+
+  hasSystemMessage(): boolean {
+    return hasSystemMessage(this.current);
+  }
+
+  getFirstSystemMessage(): Message | undefined {
+    return getFirstSystemMessage(this.current);
+  }
+
+  getSystemMessages(): ReadonlyArray<Message> {
+    return getSystemMessages(this.current);
+  }
+
+  serialize() {
+    return serializeConversation(this.current);
+  }
+
+  toChatMessages() {
+    return toChatMessages(this.current);
+  }
+
+  estimateTokens(estimator?: TokenEstimator): number {
+    return estimateConversationTokens(this.current, estimator, this.env);
+  }
+
+  getRecentMessages(
+    count: number,
+    options?: { includeHidden?: boolean; includeSystem?: boolean },
+  ): ReadonlyArray<Message> {
+    return getRecentMessages(this.current, count, options);
+  }
+
+  getStreamingMessage(): Message | undefined {
+    return getStreamingMessage(this.current);
+  }
+
+  // --- MUTATION METHODS ---
+
+  appendMessages(...inputs: MessageInput[]): void {
+    this.push(appendMessages(this.current, ...inputs, this.env));
+  }
+
+  appendUserMessage(
+    content: MessageInput['content'],
+    metadata?: Record<string, unknown>,
+  ): void {
+    this.push(appendUserMessage(this.current, content, metadata, this.env));
+  }
+
+  appendAssistantMessage(
+    content: MessageInput['content'],
+    metadata?: Record<string, unknown>,
+  ): void {
+    this.push(appendAssistantMessage(this.current, content, metadata, this.env));
+  }
+
+  appendSystemMessage(content: string, metadata?: Record<string, unknown>): void {
+    this.push(appendSystemMessage(this.current, content, metadata, this.env));
+  }
+
+  prependSystemMessage(content: string, metadata?: Record<string, unknown>): void {
+    this.push(prependSystemMessage(this.current, content, metadata, this.env));
+  }
+
+  replaceSystemMessage(content: string, metadata?: Record<string, unknown>): void {
+    this.push(replaceSystemMessage(this.current, content, metadata, this.env));
+  }
+
+  collapseSystemMessages(): void {
+    this.push(collapseSystemMessages(this.current, this.env));
+  }
+
+  redactMessageAtPosition(position: number, placeholder?: string): void {
+    this.push(redactMessageAtPosition(this.current, position, placeholder, this.env));
+  }
+
+  truncateFromPosition(
+    position: number,
+    options?: { preserveSystemMessages?: boolean },
+  ): void {
+    this.push(truncateFromPosition(this.current, position, options, this.env));
+  }
+
+  truncateToTokenLimit(maxTokens: number, options?: TruncateOptions): void {
+    this.push(truncateToTokenLimit(this.current, maxTokens, options, this.env));
+  }
+
+  appendStreamingMessage(
+    role: 'assistant' | 'user',
+    metadata?: Record<string, unknown>,
+  ): string {
+    const { conversation, messageId } = appendStreamingMessage(
+      this.current,
+      role,
+      metadata,
+      this.env,
+    );
+    this.push(conversation);
+    return messageId;
+  }
+
+  updateStreamingMessage(messageId: string, content: string): void {
+    this.push(updateStreamingMessage(this.current, messageId, content, this.env));
+  }
+
+  finalizeStreamingMessage(
+    messageId: string,
+    options?: { tokenUsage?: TokenUsage; metadata?: Record<string, unknown> },
+  ): void {
+    this.push(finalizeStreamingMessage(this.current, messageId, options, this.env));
+  }
+
+  cancelStreamingMessage(messageId: string): void {
+    this.push(cancelStreamingMessage(this.current, messageId, this.env));
   }
 
   /**
