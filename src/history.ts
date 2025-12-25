@@ -43,9 +43,25 @@ import type {
   HistoryNodeJSON,
   Message,
   MessageInput,
-  TokenEstimator,
   TokenUsage,
 } from './types';
+
+/**
+ * Event detail for conversation history changes.
+ */
+export interface ConversationHistoryEventDetail {
+  type: string;
+  conversation: Conversation;
+}
+
+/**
+ * Custom event emitted by ConversationHistory.
+ */
+export class ConversationHistoryEvent extends CustomEvent<ConversationHistoryEventDetail> {
+  constructor(type: string, detail: ConversationHistoryEventDetail) {
+    super(type, { detail });
+  }
+}
 
 interface HistoryNode {
   conversation: Conversation;
@@ -74,10 +90,12 @@ export class ConversationHistory extends EventTarget {
    * Dispatches a change event.
    */
   private notifyChange(type: string): void {
-    this.dispatchEvent(
-      new CustomEvent('change', { detail: { type, conversation: this.current } }),
-    );
-    this.dispatchEvent(new CustomEvent(type, { detail: { conversation: this.current } }));
+    const detail: ConversationHistoryEventDetail = {
+      type,
+      conversation: this.current,
+    };
+    this.dispatchEvent(new ConversationHistoryEvent('change', detail));
+    this.dispatchEvent(new ConversationHistoryEvent(type, detail));
   }
 
   /**
@@ -86,25 +104,52 @@ export class ConversationHistory extends EventTarget {
    */
   override addEventListener(
     type: string,
-    callback: EventListenerOrEventListenerObject | null,
+    callback:
+      | ((event: ConversationHistoryEvent) => void)
+      | EventListenerOrEventListenerObject
+      | null,
     options?: boolean | AddEventListenerOptions,
   ): void | (() => void) {
-    super.addEventListener(type, callback, options);
-    if (callback) {
-      return () => this.removeEventListener(type, callback, options);
-    }
+    if (!callback) return;
+    super.addEventListener(type, callback as EventListenerOrEventListenerObject, options);
+    const unsubscribe = () =>
+      this.removeEventListener(
+        type,
+        callback as EventListenerOrEventListenerObject,
+        options,
+      );
+    return unsubscribe;
   }
 
   /**
-   * Standard addEventListener plus an unsubscribe return value.
+   * Subscribes to conversation changes.
+   * This follows the Svelte store contract, making ConversationHistory a valid Svelte store.
+   * @param run - Callback called with the current conversation whenever it changes.
+   * @returns An unsubscribe function.
    */
-  subscribe(
-    type: string,
-    callback: EventListenerOrEventListenerObject,
-    options?: boolean | AddEventListenerOptions,
-  ): () => void {
-    this.addEventListener(type, callback, options);
-    return () => this.removeEventListener(type, callback, options);
+  subscribe(run: (value: Conversation) => void): () => void {
+    // Call immediately with current value (Svelte store contract)
+    run(this.current);
+
+    const handler = (event: Event) => {
+      if (event instanceof ConversationHistoryEvent) {
+        run(event.detail.conversation);
+      }
+    };
+
+    const unsubscribe = this.addEventListener(
+      'change',
+      handler as (event: ConversationHistoryEvent) => void,
+    );
+    return (unsubscribe as () => void) || (() => {});
+  }
+
+  /**
+   * Returns the current conversation.
+   * Useful for useSyncExternalStore in React.
+   */
+  getSnapshot(): Conversation {
+    return this.current;
   }
 
   /**
@@ -272,7 +317,7 @@ export class ConversationHistory extends EventTarget {
     return toChatMessages(this.current);
   }
 
-  estimateTokens(estimator?: TokenEstimator): number {
+  estimateTokens(estimator?: (message: Message) => number): number {
     return estimateConversationTokens(this.current, estimator, this.env);
   }
 
@@ -404,18 +449,23 @@ export class ConversationHistory extends EventTarget {
     json: ConversationHistoryJSON,
     environment?: Partial<ConversationEnvironment>,
   ): ConversationHistory {
-    const history = new ConversationHistory(
-      deserializeConversation(json.root.conversation),
-      environment,
-    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call
+    const rootConv = (deserializeConversation as any)(
+      json.root.conversation,
+    ) as Conversation;
+    const history = new ConversationHistory(rootConv, environment);
 
     // Recursive function to build the tree
     const buildTree = (
       nodeJSON: HistoryNodeJSON,
       parentNode: HistoryNode,
     ): HistoryNode => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call
+      const nodeConv = (deserializeConversation as any)(
+        nodeJSON.conversation,
+      ) as Conversation;
       const node: HistoryNode = {
-        conversation: deserializeConversation(nodeJSON.conversation),
+        conversation: nodeConv,
         parent: parentNode,
         children: [],
       };
@@ -423,15 +473,19 @@ export class ConversationHistory extends EventTarget {
       return node;
     };
 
-    const rootNode = history.currentNode;
+    const h = history as unknown as { currentNode: HistoryNode };
+    const rootNode = h.currentNode;
     rootNode.children = json.root.children.map((child) => buildTree(child, rootNode));
 
     // Traverse to find the current node
-    let current = rootNode;
+    let current: HistoryNode = rootNode;
     for (const index of json.currentPath) {
-      current = current.children[index]!;
+      const target = current.children[index];
+      if (target) {
+        current = target;
+      }
     }
-    history.currentNode = current;
+    h.currentNode = current;
 
     return history;
   }

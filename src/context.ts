@@ -25,7 +25,6 @@ export function estimateConversationTokens(
   if (
     !environment &&
     estimateTokens &&
-    typeof estimateTokens === 'object' &&
     isConversationEnvironmentParameter(estimateTokens)
   ) {
     env = estimateTokens;

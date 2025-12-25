@@ -54,13 +54,14 @@ export function resolveConversationEnvironment(
 export function isConversationEnvironmentParameter(
   value: unknown,
 ): value is Partial<ConversationEnvironment> {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== 'object' || value === null) return false;
   if ('role' in (value as Record<string, unknown>)) return false;
 
-  const candidate = value as Partial<ConversationEnvironment>;
+  const candidate = value as Record<string, unknown>;
   return (
-    typeof candidate.now === 'function' ||
-    typeof candidate.randomId === 'function' ||
-    (Array.isArray(candidate.plugins) && candidate.plugins.length > 0)
+    typeof candidate['now'] === 'function' ||
+    typeof candidate['randomId'] === 'function' ||
+    typeof candidate['estimateTokens'] === 'function' ||
+    (Array.isArray(candidate['plugins']) && candidate['plugins'].length > 0)
   );
 }

@@ -334,10 +334,10 @@ describe('ConversationHistory', () => {
       let changeCount = 0;
       let lastType = '';
 
-      const unsubscribe = history.subscribe('change', (e: any) => {
+      const unsubscribe = history.addEventListener('change', (e: any) => {
         changeCount++;
         lastType = e.detail.type;
-      });
+      }) as () => void;
 
       history.appendUserMessage('test');
       expect(changeCount).toBe(1);
@@ -386,6 +386,29 @@ describe('ConversationHistory', () => {
 
       // Node references should be cleared (verified via no crash on repeated dispose)
       expect(() => history[Symbol.dispose]()).not.toThrow();
+    });
+
+    it('should support Svelte store subscribe contract', () => {
+      const history = new ConversationHistory(createConversation({ id: 'test' }));
+      let current: Conversation | undefined;
+      const unsubscribe = history.subscribe((v) => {
+        current = v;
+      });
+
+      expect(current?.id).toBe('test');
+
+      history.appendUserMessage('new message');
+      expect(current?.messages.length).toBe(1);
+
+      unsubscribe();
+      history.appendUserMessage('another one');
+      expect(current?.messages.length).toBe(1);
+    });
+
+    it('should support getSnapshot for React useSyncExternalStore', () => {
+      const conversation = createConversation();
+      const history = new ConversationHistory(conversation);
+      expect(history.getSnapshot()).toBe(conversation);
     });
   });
 });

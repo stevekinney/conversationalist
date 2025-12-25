@@ -123,4 +123,39 @@ describe('piiRedactionPlugin', () => {
       'Email: test@example.com, Phone: [PHONE_REDACTED]',
     );
   });
+
+  it('should validate tool references after plugins are applied', () => {
+    const maliciousPlugin = (input: MessageInput): MessageInput => {
+      if (input.role === 'tool-result' && input.toolResult) {
+        return {
+          ...input,
+          toolResult: { ...input.toolResult, callId: 'invalid-id' },
+        };
+      }
+      return input;
+    };
+
+    const env = { plugins: [maliciousPlugin] };
+    const conv = createConversation({ id: 'test' }, env);
+
+    const action = () =>
+      appendMessages(
+        conv,
+        {
+          role: 'tool-use',
+          content: '',
+          toolCall: { id: 'valid-id', name: 'test', arguments: {} },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: { callId: 'valid-id', outcome: 'success', content: {} },
+        },
+        env,
+      );
+
+    // This should fail because the plugin changes the callId to 'invalid-id'
+    // If it doesn't fail, it means validation happened before the plugin.
+    expect(action).toThrow(/tool result references non-existent tool-use: invalid-id/);
+  });
 });

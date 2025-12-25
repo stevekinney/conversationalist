@@ -124,15 +124,15 @@ export function appendMessages(
     messages: Message[];
   }>(
     (state, input, index) => {
-      if (input.role === 'tool-result' && input.toolResult) {
-        assertToolReference(state.toolUses, input.toolResult.callId);
-      }
-
       // Apply plugins to the input
       const processedInput = resolvedEnvironment.plugins.reduce(
         (acc, plugin) => plugin(acc),
         input,
       );
+
+      if (processedInput.role === 'tool-result' && processedInput.toolResult) {
+        assertToolReference(state.toolUses, processedInput.toolResult.callId);
+      }
 
       const normalizedContent = normalizeContent(processedInput.content) as
         | string

@@ -416,10 +416,13 @@ history.truncateToTokenLimit(4000);
 const messages = history.getMessages();
 const stats = history.getStatistics();
 const tokens = history.estimateTokens();
+```
 
 ### Event Subscription
 
-`ConversationHistory` implements `EventTarget`, allowing you to listen for changes. The `addEventListener` method returns an unsubscribe function, making it ideal for cleaning up reactive effects in Svelte 5 or React hooks.
+`ConversationHistory` implements `EventTarget` and follows the Svelte store contract. You can listen for changes using standard DOM events or the `subscribe` method.
+
+#### Using DOM Events
 
 ```ts
 const history = new ConversationHistory(createConversation());
@@ -430,9 +433,28 @@ const unsubscribe = history.addEventListener('change', (event) => {
   console.log(`History updated via ${type}`);
 });
 
-history.appendUserMessage("Hello!"); // Fires 'push' and 'change' events
+history.appendUserMessage('Hello!'); // Fires 'push' and 'change' events
 
 unsubscribe(); // Clean up when done
+```
+
+#### Using the Store Contract
+
+```ts
+// Subscribe returns an unsubscribe function and calls the callback immediately
+const unsubscribe = history.subscribe((conversation) => {
+  console.log('Current conversation state:', conversation);
+});
+```
+
+You can also use an `AbortSignal` for automatic cleanup:
+
+```ts
+const controller = new AbortController();
+history.addEventListener('change', (e) => { ... }, { signal: controller.signal });
+
+// Later...
+controller.abort();
 ```
 
 ### Conversation Branching
@@ -442,10 +464,10 @@ The `ConversationHistory` class supports branching. When you undo to a previous 
 ```ts
 const history = new ConversationHistory(createConversation());
 
-history.push(appendUserMessage(history.current, "Path A"));
+history.push(appendUserMessage(history.current, 'Path A'));
 history.undo();
 
-history.push(appendUserMessage(history.current, "Path B"));
+history.push(appendUserMessage(history.current, 'Path B'));
 
 console.log(history.branchCount); // 2
 console.log(history.current.messages[0].content); // "Path B"
@@ -468,7 +490,7 @@ const restored = ConversationHistory.from(json);
 
 // You can also provide a new environment (e.g. with fresh token counters)
 const restoredWithEnv = ConversationHistory.from(json, {
-  estimateTokens: myNewEstimator
+  estimateTokens: myNewEstimator,
 });
 ```
 
@@ -499,51 +521,56 @@ export function ChatApp() {
     </div>
   );
 }
-````
+```
 
 #### Custom React Hook Example
 
-For more complex applications, you can wrap the logic into a custom hook to provide a cleaner interface for your components.
+For more complex applications, you can wrap the logic into a custom hook. This example uses `addEventListener` to sync the history with local React state and returns the unsubscribe function for easy cleanup in `useEffect`.
 
 ```tsx
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   createConversation,
-  appendUserMessage,
-  appendAssistantMessage,
+  ConversationHistory,
   toChatMessages,
 } from 'conversationalist';
 
 export function useChat(initialTitle?: string) {
-  const [conversation, setConversation] = useState(() =>
-    createConversation({ title: initialTitle }),
+  // 1. Initialize history (this could also come from context or props)
+  const [history] = useState(
+    () => new ConversationHistory(createConversation({ title: initialTitle })),
   );
+
+  // 2. Sync history with local state for reactivity
+  const [conversation, setConversation] = useState(history.current);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // addEventListener returns a cleanup function!
+    return history.addEventListener('change', (e) => {
+      setConversation(e.detail.conversation);
+    });
+  }, [history]);
 
   const sendMessage = useCallback(
     async (text: string) => {
-      // 1. Append user message
-      const updated = appendUserMessage(conversation, text);
-      setConversation(updated);
+      history.appendUserMessage(text);
       setLoading(true);
 
       try {
-        // 2. Call your LLM API (e.g. via your own backend)
         const response = await fetch('/api/chat', {
           method: 'POST',
           body: JSON.stringify({
-            messages: toChatMessages(updated),
+            messages: history.toChatMessages(),
           }),
         });
         const data = await response.json();
-
-        // 3. Append assistant response
-        setConversation((prev) => appendAssistantMessage(prev, data.answer));
+        history.appendAssistantMessage(data.answer);
       } finally {
         setLoading(false);
       }
     },
-    [conversation],
+    [history],
   );
 
   return {
@@ -551,6 +578,8 @@ export function useChat(initialTitle?: string) {
     messages: conversation.messages,
     loading,
     sendMessage,
+    undo: () => history.undo(),
+    redo: () => history.redo(),
   };
 }
 ```
@@ -609,62 +638,24 @@ In Svelte 5, you can manage conversation state using the `$state` rune. Since **
 
 #### Custom Svelte Rune Example
 
-You can encapsulate your chat logic into a reusable class-based rune. Svelte 5's `$state` and `$derived` runes pair perfectly with **Conversationalist**'s immutable data and history utilities.
+Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `ConversationHistory` class directly as a store, or wrap it in a class with runes.
 
-```ts
-import {
-  createConversation,
-  appendUserMessage,
-  appendAssistantMessage,
-  toChatMessages,
-  ConversationHistory,
-} from 'conversationalist';
+```svelte
+<script lang="ts">
+  import { ConversationHistory, createConversation } from 'conversationalist';
 
-export class Chat {
-  // Use history to get undo/redo for free
-  #history = new ConversationHistory(createConversation());
+  // history implements the Svelte store contract
+  const history = new ConversationHistory(createConversation());
+</script>
 
-  // Wrap the current state in a rune
-  conversation = $state(this.#history.current);
-  loading = $state(false);
-
-  // Derived state for the UI
-  messages = $derived(this.conversation.messages);
-  canUndo = $derived(this.#history.canUndo);
-  canRedo = $derived(this.#history.canRedo);
-
-  async sendMessage(text: string) {
-    // 1. Update history and state
-    this.#history.push(appendUserMessage(this.conversation, text));
-    this.conversation = this.#history.current;
-    this.loading = true;
-
-    try {
-      // 2. Call your LLM API
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        body: JSON.stringify({ messages: toChatMessages(this.conversation) }),
-      });
-      const data = await response.json();
-
-      // 3. Update history and state with response
-      this.#history.push(appendAssistantMessage(this.conversation, data.answer));
-      this.conversation = this.#history.current;
-    } finally {
-      this.loading = false;
-    }
-  }
-
-  undo() {
-    const prev = this.#history.undo();
-    if (prev) this.conversation = prev;
-  }
-
-  redo() {
-    const next = this.#history.redo();
-    if (next) this.conversation = next;
-  }
-}
+<div>
+  {#each $history.messages as m (m.id)}
+    <div>{String(m.content)}</div>
+  {/each}
+  <button onclick={() => history.appendUserMessage('Hello!')}>
+    Send
+  </button>
+</div>
 ```
 
 > **Note**: `ConversationHistory.addEventListener()` returns an unsubscribe function, which is ideal for cleaning up reactive effects in Svelte 5 or React hooks.
@@ -701,3 +692,4 @@ bun install
 bun test
 bun run build
 ```
+````
