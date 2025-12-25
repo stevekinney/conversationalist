@@ -474,6 +474,59 @@ In Svelte 5, you can manage conversation state using the `$state` rune. Since **
 </div>
 ```
 
+#### Custom Svelte Rune Example
+
+You can encapsulate your chat logic into a reusable "chat rune" (typically in a `.svelte.ts` file).
+
+```ts
+import {
+  createConversation,
+  appendUserMessage,
+  appendAssistantMessage,
+  toChatMessages,
+} from 'conversationalist';
+
+export function createChat(initialTitle?: string) {
+  let conversation = $state(createConversation({ title: initialTitle }));
+  let loading = $state(false);
+
+  async function sendMessage(text: string) {
+    // 1. Append user message
+    conversation = appendUserMessage(conversation, text);
+    loading = true;
+
+    try {
+      // 2. Call your LLM API
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          messages: toChatMessages(conversation),
+        }),
+      });
+      const data = await response.json();
+
+      // 3. Append assistant response
+      conversation = appendAssistantMessage(conversation, data.answer);
+    } finally {
+      loading = false;
+    }
+  }
+
+  return {
+    get conversation() {
+      return conversation;
+    },
+    get messages() {
+      return conversation.messages;
+    },
+    get loading() {
+      return loading;
+    },
+    sendMessage,
+  };
+}
+```
+
 ## API Overview
 
 | Category         | Key Functions                                                                                            |
