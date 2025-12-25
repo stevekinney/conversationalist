@@ -55,9 +55,5 @@ export function isConversationEnvironmentParameter(
   if ('role' in (value as Record<string, unknown>)) return false;
 
   const candidate = value as Partial<ConversationEnvironment>;
-  return (
-    typeof candidate.now === 'function' ||
-    typeof candidate.randomId === 'function' ||
-    typeof candidate.estimateTokens === 'function'
-  );
+  return typeof candidate.now === 'function' || typeof candidate.randomId === 'function';
 }

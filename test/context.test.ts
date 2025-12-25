@@ -428,4 +428,32 @@ describe('truncateToTokenLimit', () => {
     const truncated = truncateToTokenLimit(conv, 1, () => 100);
     expect(truncated.messages.length).toBe(0);
   });
+
+  it('does not overwrite explicitly passed environment when options contain an estimator', () => {
+    let conv = createConversation({ id: 'test' });
+    conv = appendMessages(conv, { role: 'user', content: 'Hello' });
+
+    const myEnv = {
+      now: () => '2025-01-01T00:00:00.000Z',
+      randomId: () => 'custom-id',
+      estimateTokens: () => 1,
+    };
+
+    // If we pass an estimator in options AND an environment
+    const truncated = truncateToTokenLimit(
+      conv,
+      10,
+      { estimateTokens: () => 100 }, // This estimator should be used
+      myEnv, // This environment should NOT be overwritten by the options object
+    );
+
+    // If it used myEnv.now(), the updatedAt should match.
+    // truncateToTokenLimit re-creates messages if it truncates.
+    // In this case, conv has 1 message. 
+    // If it uses options.estimateTokens (100), 100 > 10, so it truncates.
+    // If it uses myEnv.estimateTokens (1), 1 <= 10, so it doesn't truncate.
+    
+    expect(truncated.messages.length).toBe(0); // Should have used the 100 tokens estimator
+    expect(truncated.updatedAt).toBe('2025-01-01T00:00:00.000Z'); // Should have used myEnv.now()
+  });
 });

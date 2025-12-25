@@ -138,10 +138,11 @@ export function truncateToTokenLimit(
   if (typeof optionsOrEstimator === 'function') {
     options = { estimateTokens: optionsOrEstimator };
   } else if (optionsOrEstimator) {
-    options = optionsOrEstimator;
-    // If we're coming from history.bind, the environment might be passed as optionsOrEstimator
-    if (isConversationEnvironmentParameter(optionsOrEstimator)) {
+    // If environment was not explicitly passed, check if optionsOrEstimator IS the environment
+    if (!environment && isConversationEnvironmentParameter(optionsOrEstimator)) {
       env = optionsOrEstimator;
+    } else {
+      options = optionsOrEstimator;
     }
   }
 
