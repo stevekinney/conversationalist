@@ -1,5 +1,6 @@
 import { describe, expectTypeOf, it } from 'bun:test';
 
+import { ConversationHistory } from '../src/history';
 import type { MultiModalContent } from '../src/multi-modal';
 import type {
   Conversation,
@@ -15,6 +16,12 @@ import type {
 } from '../src/types';
 
 describe('conversationalist types Type Inference', () => {
+  describe('ConversationHistory', () => {
+    it('implements EventTarget', () => {
+      expectTypeOf<ConversationHistory>().toMatchTypeOf<EventTarget>();
+    });
+  });
+
   describe('MessageRole', () => {
     it('is a union of literal string types', () => {
       expectTypeOf<MessageRole>().toEqualTypeOf<

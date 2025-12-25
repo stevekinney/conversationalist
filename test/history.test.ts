@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, expectTypeOf, it } from 'bun:test';
 
 import {
   appendUserMessage,
@@ -11,6 +11,12 @@ import {
 } from '../src';
 
 describe('ConversationHistory', () => {
+  it('should implement EventTarget', () => {
+    expectTypeOf<ConversationHistory>().toMatchTypeOf<EventTarget>();
+    const history = new ConversationHistory(createConversation());
+    expect(history instanceof EventTarget).toBe(true);
+  });
+
   it('should initialize with a conversation', () => {
     const conversation = createConversation({ title: 'Test' });
     const history = new ConversationHistory(conversation);
@@ -374,10 +380,10 @@ describe('ConversationHistory', () => {
     it('should support cleanup via Symbol.dispose', () => {
       const history = new ConversationHistory(createConversation());
       history.appendUserMessage('msg');
-      
+
       // Explicit cleanup
       history[Symbol.dispose]();
-      
+
       // Node references should be cleared (verified via no crash on repeated dispose)
       expect(() => history[Symbol.dispose]()).not.toThrow();
     });
