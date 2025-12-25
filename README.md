@@ -476,7 +476,7 @@ In Svelte 5, you can manage conversation state using the `$state` rune. Since **
 
 #### Custom Svelte Rune Example
 
-You can encapsulate your chat logic into a reusable "chat rune" (typically in a `.svelte.ts` file).
+You can encapsulate your chat logic into a reusable class-based rune. Svelte 5's `$state` and `$derived` runes pair perfectly with **Conversationalist**'s immutable data and history utilities.
 
 ```ts
 import {
@@ -484,46 +484,53 @@ import {
   appendUserMessage,
   appendAssistantMessage,
   toChatMessages,
+  ConversationHistory,
 } from 'conversationalist';
 
-export function createChat(initialTitle?: string) {
-  let conversation = $state(createConversation({ title: initialTitle }));
-  let loading = $state(false);
+export class Chat {
+  // Use history to get undo/redo for free
+  #history = new ConversationHistory(createConversation());
 
-  async function sendMessage(text: string) {
-    // 1. Append user message
-    conversation = appendUserMessage(conversation, text);
-    loading = true;
+  // Wrap the current state in a rune
+  conversation = $state(this.#history.current);
+  loading = $state(false);
+
+  // Derived state for the UI
+  messages = $derived(this.conversation.messages);
+  canUndo = $derived(this.#history.canUndo);
+  canRedo = $derived(this.#history.canRedo);
+
+  async sendMessage(text: string) {
+    // 1. Update history and state
+    this.#history.push(appendUserMessage(this.conversation, text));
+    this.conversation = this.#history.current;
+    this.loading = true;
 
     try {
       // 2. Call your LLM API
       const response = await fetch('/api/chat', {
         method: 'POST',
-        body: JSON.stringify({
-          messages: toChatMessages(conversation),
-        }),
+        body: JSON.stringify({ messages: toChatMessages(this.conversation) }),
       });
       const data = await response.json();
 
-      // 3. Append assistant response
-      conversation = appendAssistantMessage(conversation, data.answer);
+      // 3. Update history and state with response
+      this.#history.push(appendAssistantMessage(this.conversation, data.answer));
+      this.conversation = this.#history.current;
     } finally {
-      loading = false;
+      this.loading = false;
     }
   }
 
-  return {
-    get conversation() {
-      return conversation;
-    },
-    get messages() {
-      return conversation.messages;
-    },
-    get loading() {
-      return loading;
-    },
-    sendMessage,
-  };
+  undo() {
+    const prev = this.#history.undo();
+    if (prev) this.conversation = prev;
+  }
+
+  redo() {
+    const next = this.#history.redo();
+    if (next) this.conversation = next;
+  }
 }
 ```
 
