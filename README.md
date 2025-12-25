@@ -387,6 +387,24 @@ const conversation = withConversation(createConversation(), (draft) => {
 });
 ```
 
+`pipeConversation` allows you to chain multiple transformation functions together:
+
+```ts
+import {
+  createConversation,
+  pipeConversation,
+  appendSystemMessage,
+  appendUserMessage,
+} from 'conversationalist';
+
+const conversation = pipeConversation(
+  createConversation(),
+  (c) => appendSystemMessage(c, 'You are a helpful assistant.'),
+  (c) => appendUserMessage(c, 'Hello!'),
+  (c) => appendAssistantMessage(c, 'Hi there!'),
+);
+```
+
 ## Conversation History (Undo/Redo)
 
 Use the `ConversationHistory` class to manage a stack of conversation states. Because every change returns a new immutable object, supporting undo/redo is built into the architecture.
