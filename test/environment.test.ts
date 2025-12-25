@@ -29,4 +29,3 @@ describe('withEnvironment', () => {
     expect(result).toEqual({ a: 'hello', b: 42, id: 'fixed-id' });
   });
 });
-

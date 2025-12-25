@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import {
-  appendMessages,
-  ConversationHistory,
-  createConversation,
-} from '../src';
-import {
-  createPIIRedactionPlugin,
-  piiRedactionPlugin,
-} from '../src/plugins';
+import { appendMessages, ConversationHistory, createConversation } from '../src';
+import { createPIIRedactionPlugin, piiRedactionPlugin } from '../src/plugins';
 
 describe('piiRedactionPlugin', () => {
   it('should redact emails', () => {

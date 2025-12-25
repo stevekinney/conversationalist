@@ -84,9 +84,11 @@
     "change-case": "^5.4.4"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@eslint/eslintrc": "^3.3.3",
     "@eslint/js": "^9.39.2",
     "@eslint/markdown": "^7.5.1",
+    "@google/generative-ai": "^0.24.1",
     "@lasercat/homogenaize": "^1.2.41",
     "@types/bun": "^1.3.5",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
@@ -106,6 +108,7 @@
     "globals": "^16.5.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
+    "openai": "^6.15.0",
     "prettier": "^3.7.4",
     "sort-package-json": "^3.6.0",
     "typescript-eslint": "^8.50.0",
