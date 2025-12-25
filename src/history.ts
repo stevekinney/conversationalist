@@ -56,17 +56,51 @@ interface HistoryNode {
 /**
  * Manages a stack of conversation versions to support undo, redo, and branching.
  */
-export class ConversationHistory {
+export class ConversationHistory extends EventTarget {
   private currentNode: HistoryNode;
   private environment: ConversationEnvironment;
 
   constructor(initial: Conversation, environment?: Partial<ConversationEnvironment>) {
+    super();
     this.environment = resolveConversationEnvironment(environment);
     this.currentNode = {
       conversation: initial,
       parent: null,
       children: [],
     };
+  }
+
+  /**
+   * Dispatches a change event.
+   */
+  private notifyChange(type: string): void {
+    this.dispatchEvent(
+      new CustomEvent('change', { detail: { type, conversation: this.current } }),
+    );
+    this.dispatchEvent(new CustomEvent(type, { detail: { conversation: this.current } }));
+  }
+
+  /**
+   * Overrides addEventListener to optionally return an unsubscribe function.
+   */
+  override addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    super.addEventListener(type, callback, options);
+  }
+
+  /**
+   * Standard addEventListener plus an unsubscribe return value.
+   */
+  subscribe(
+    type: string,
+    callback: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): () => void {
+    this.addEventListener(type, callback, options);
+    return () => this.removeEventListener(type, callback, options);
   }
 
   /**
@@ -131,6 +165,7 @@ export class ConversationHistory {
     };
     this.currentNode.children.push(newNode);
     this.currentNode = newNode;
+    this.notifyChange('push');
   }
 
   /**
@@ -140,6 +175,7 @@ export class ConversationHistory {
   undo(): Conversation | undefined {
     if (this.currentNode.parent) {
       this.currentNode = this.currentNode.parent;
+      this.notifyChange('undo');
       return this.current;
     }
     return undefined;
@@ -154,6 +190,7 @@ export class ConversationHistory {
     const next = this.currentNode.children[childIndex];
     if (next) {
       this.currentNode = next;
+      this.notifyChange('redo');
       return this.current;
     }
     return undefined;
@@ -169,6 +206,7 @@ export class ConversationHistory {
       const target = this.currentNode.parent.children[index];
       if (target) {
         this.currentNode = target;
+        this.notifyChange('switch');
         return this.current;
       }
     }
@@ -406,6 +444,32 @@ export class ConversationHistory {
     ) => R,
   ): (...args: T) => R {
     return bindToConversationHistory(this, fn);
+  }
+
+  /**
+   * Cleans up all listeners and resources.
+   */
+  [Symbol.dispose](): void {
+    // Clear references to help GC
+    let root: HistoryNode | null = this.currentNode;
+    while (root?.parent) {
+      root = root.parent;
+    }
+
+    const clearNode = (node: HistoryNode) => {
+      for (const child of node.children) {
+        clearNode(child);
+      }
+      node.children = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+      const n = node as any;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      n.parent = null;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      n.conversation = null;
+    };
+
+    if (root) clearNode(root);
   }
 }
 

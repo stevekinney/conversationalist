@@ -537,6 +537,8 @@ export function useChat(initialTitle?: string) {
 }
 ```
 
+> **Note**: `ConversationHistory.subscribe()` returns an unsubscribe function, which is ideal for cleaning up effects in React (`useEffect`) or Svelte.
+
 ### Using with Redux
 
 Redux requires immutable state updates, making **Conversationalist** an ideal companion. You can store the conversation object directly in your store.
@@ -646,6 +648,8 @@ export class Chat {
   }
 }
 ```
+
+> **Note**: `ConversationHistory.subscribe()` returns an unsubscribe function, which is ideal for cleaning up reactive effects in Svelte 5 or React hooks.
 
 ## API Overview
 

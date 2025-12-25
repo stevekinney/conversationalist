@@ -322,5 +322,64 @@ describe('ConversationHistory', () => {
       expect(restored.current.messages).toHaveLength(1);
       expect(restored.current.messages[0].content).toBe('V1');
     });
+
+    it('should support EventTarget and dispatch events on mutations', () => {
+      const history = new ConversationHistory(createConversation());
+      let changeCount = 0;
+      let lastType = '';
+
+      const unsubscribe = history.subscribe('change', (e: any) => {
+        changeCount++;
+        lastType = e.detail.type;
+      });
+
+      history.appendUserMessage('test');
+      expect(changeCount).toBe(1);
+      expect(lastType).toBe('push');
+
+      history.undo();
+      expect(changeCount).toBe(2);
+      expect(lastType).toBe('undo');
+
+      history.redo();
+      expect(changeCount).toBe(3);
+      expect(lastType).toBe('redo');
+
+      history.undo();
+      history.appendUserMessage('branch');
+      history.switchToBranch(0);
+      expect(changeCount).toBe(6); // push, undo, redo, undo, push, switch
+      expect(lastType).toBe('switch');
+
+      unsubscribe();
+      history.appendUserMessage('after unsubscribe');
+      expect(changeCount).toBe(6); // no increase
+    });
+
+    it('should support AbortSignal in addEventListener', () => {
+      const history = new ConversationHistory(createConversation());
+      let count = 0;
+      const controller = new AbortController();
+
+      history.addEventListener('change', () => count++, { signal: controller.signal });
+
+      history.appendUserMessage('msg');
+      expect(count).toBe(1);
+
+      controller.abort();
+      history.appendUserMessage('msg 2');
+      expect(count).toBe(1);
+    });
+
+    it('should support cleanup via Symbol.dispose', () => {
+      const history = new ConversationHistory(createConversation());
+      history.appendUserMessage('msg');
+      
+      // Explicit cleanup
+      history[Symbol.dispose]();
+      
+      // Node references should be cleared (verified via no crash on repeated dispose)
+      expect(() => history[Symbol.dispose]()).not.toThrow();
+    });
   });
 });
