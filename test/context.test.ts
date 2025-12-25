@@ -482,4 +482,58 @@ describe('truncateToTokenLimit', () => {
     // @ts-expect-error - testing runtime behavior for potentially misidentified object
     expect(isConversationEnvironmentParameter(options)).toBe(false);
   });
+
+  it('correctly uses environment when passed as 3rd argument with an estimator', () => {
+    let conv = createConversation({ id: 'test' });
+    conv = appendMessages(conv, { role: 'user', content: 'Hello' });
+
+    const myEnv = {
+      now: () => '2025-01-01T00:00:00.000Z',
+      randomId: () => 'custom-id',
+      estimateTokens: () => 100, // This should trigger truncation
+    };
+
+    // Pass environment as 3rd arg, 4th arg is undefined
+    const truncated = truncateToTokenLimit(conv, 10, myEnv);
+
+    expect(truncated.messages.length).toBe(0); // Truncated because 100 > 10
+    expect(truncated.updatedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('prioritizes environment fields over options fields when disambiguating', () => {
+    let conv = createConversation({ id: 'test' });
+    conv = appendMessages(conv, { role: 'user', content: 'Hello' });
+
+    // This object has BOTH environment fields (now) AND fields that exist in options (estimateTokens)
+    // The presence of 'now' should make it be treated as an environment, not options
+    const ambiguousObject = {
+      now: () => '2025-01-01T00:00:00.000Z',
+      estimateTokens: () => 100,
+    };
+
+    const truncated = truncateToTokenLimit(conv, 10, ambiguousObject);
+
+    // Should truncate using the environment's estimator
+    expect(truncated.messages.length).toBe(0);
+    // Should use the environment's now function (not default)
+    expect(truncated.updatedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('treats object with only estimateTokens as options when no environment fields present', () => {
+    let conv = createConversation({ id: 'test' });
+    conv = appendMessages(conv, { role: 'user', content: 'Hello' });
+
+    // This object has only estimateTokens (no now/randomId/plugins)
+    // Should be treated as TruncateOptions, not ConversationEnvironment
+    const optionsObject = {
+      estimateTokens: () => 100,
+    };
+
+    const truncated = truncateToTokenLimit(conv, 10, optionsObject);
+
+    // Should truncate using the provided estimator
+    expect(truncated.messages.length).toBe(0);
+    // updatedAt should use default environment (current time), not a fixed time
+    expect(truncated.updatedAt).not.toBe('2025-01-01T00:00:00.000Z');
+  });
 });

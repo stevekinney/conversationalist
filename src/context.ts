@@ -71,22 +71,20 @@ export function truncateToTokenLimit(
     // If environment was not explicitly passed, check if optionsOrEstimator IS the environment
     if (!environment && isConversationEnvironmentParameter(optionsOrEstimator)) {
       // Disambiguate between TruncateOptions and ConversationEnvironment.
+      // Environment fields (now, randomId, non-empty plugins) take priority because they're
+      // exclusive to ConversationEnvironment, while estimateTokens exists in both types.
       const candidate = optionsOrEstimator as Record<string, unknown>;
       const hasEnvFields = !!(
         candidate['now'] ||
         candidate['randomId'] ||
-        candidate['plugins']
+        (Array.isArray(candidate['plugins']) && candidate['plugins'].length > 0)
       );
 
-      const hasOptionsFields = !!(
-        candidate['preserveSystemMessages'] ||
-        candidate['preserveLastN'] ||
-        candidate['estimateTokens']
-      );
-
-      if (hasEnvFields && !hasOptionsFields) {
+      if (hasEnvFields) {
+        // Treat as environment, not options
         env = optionsOrEstimator;
       } else {
+        // Has estimateTokens but no exclusive environment fields, treat as options
         options = optionsOrEstimator;
       }
     } else {
