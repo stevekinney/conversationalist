@@ -97,3 +97,8 @@ export interface Conversation {
  * A function that estimates the number of tokens in a message.
  */
 export type TokenEstimator = (message: Message) => number;
+
+/**
+ * A plugin that can transform a MessageInput before it is appended.
+ */
+export type MessagePlugin = (input: MessageInput) => MessageInput;

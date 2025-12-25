@@ -1,4 +1,4 @@
-import type { Message, TokenEstimator } from './types';
+import type { Message, MessagePlugin, TokenEstimator } from './types';
 import { messageText } from './utilities';
 
 /**
@@ -9,6 +9,7 @@ export interface ConversationEnvironment {
   now: () => string;
   randomId: () => string;
   estimateTokens: TokenEstimator;
+  plugins: MessagePlugin[];
 }
 
 /**
@@ -27,6 +28,7 @@ export const defaultConversationEnvironment: ConversationEnvironment = {
   now: () => new Date().toISOString(),
   randomId: () => crypto.randomUUID(),
   estimateTokens: simpleTokenEstimator,
+  plugins: [],
 };
 
 /**
@@ -41,6 +43,7 @@ export function resolveConversationEnvironment(
     randomId: environment?.randomId ?? defaultConversationEnvironment.randomId,
     estimateTokens:
       environment?.estimateTokens ?? defaultConversationEnvironment.estimateTokens,
+    plugins: [...(environment?.plugins ?? defaultConversationEnvironment.plugins)],
   };
 }
 
@@ -55,5 +58,9 @@ export function isConversationEnvironmentParameter(
   if ('role' in (value as Record<string, unknown>)) return false;
 
   const candidate = value as Partial<ConversationEnvironment>;
-  return typeof candidate.now === 'function' || typeof candidate.randomId === 'function';
+  return (
+    typeof candidate.now === 'function' ||
+    typeof candidate.randomId === 'function' ||
+    Array.isArray(candidate.plugins)
+  );
 }

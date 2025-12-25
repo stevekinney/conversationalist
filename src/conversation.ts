@@ -128,27 +128,33 @@ export function appendMessages(
         assertToolReference(state.toolUses, input.toolResult.callId);
       }
 
-      const normalizedContent = normalizeContent(input.content) as
+      // Apply plugins to the input
+      const processedInput = resolvedEnvironment.plugins.reduce(
+        (acc, plugin) => plugin(acc),
+        input,
+      );
+
+      const normalizedContent = normalizeContent(processedInput.content) as
         | string
         | MultiModalContent[];
 
       const message = createMessage({
         id: resolvedEnvironment.randomId(),
-        role: input.role,
+        role: processedInput.role,
         content: normalizedContent,
         position: startPosition + index,
         createdAt: now,
-        metadata: { ...(input.metadata ?? {}) },
-        hidden: input.hidden ?? false,
-        toolCall: input.toolCall,
-        toolResult: input.toolResult,
-        tokenUsage: input.tokenUsage,
-        goalCompleted: input.goalCompleted,
+        metadata: { ...(processedInput.metadata ?? {}) },
+        hidden: processedInput.hidden ?? false,
+        toolCall: processedInput.toolCall,
+        toolResult: processedInput.toolResult,
+        tokenUsage: processedInput.tokenUsage,
+        goalCompleted: processedInput.goalCompleted,
       });
 
       const toolUses =
-        input.role === 'tool-use' && input.toolCall
-          ? registerToolUse(state.toolUses, input.toolCall)
+        processedInput.role === 'tool-use' && processedInput.toolCall
+          ? registerToolUse(state.toolUses, processedInput.toolCall)
           : state.toolUses;
 
       return {

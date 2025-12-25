@@ -218,6 +218,50 @@ const boundTruncate = history.bind(truncateToTokenLimit);
 boundTruncate(4000); // Uses tiktokenEstimator automatically
 ```
 
+## Plugins
+
+**Conversationalist** supports a plugin system that allows you to transform messages as they are appended to a conversation. Plugins are functions that take a `MessageInput` and return a modified `MessageInput`.
+
+### PII Redaction Plugin
+
+The library includes a built-in `piiRedactionPlugin` that can automatically redact emails, phone numbers, and common API key patterns.
+
+```ts
+import {
+  appendUserMessage,
+  createConversation,
+  piiRedactionPlugin,
+} from 'conversationalist';
+
+// 1. Enable by adding to your environment
+const env = {
+  plugins: [piiRedactionPlugin],
+};
+
+// 2. Use the environment when appending messages
+let conversation = createConversation({}, env);
+conversation = appendUserMessage(
+  conversation,
+  'Contact me at test@example.com',
+  undefined,
+  env,
+);
+
+console.log(conversation.messages[0].content);
+// "Contact me at [EMAIL_REDACTED]"
+```
+
+When using `ConversationHistory`, you only need to provide the plugin once during initialization:
+
+```ts
+const history = new ConversationHistory(createConversation(), {
+  plugins: [piiRedactionPlugin],
+});
+
+const appendUser = history.bind(appendUserMessage);
+appendUser('My key is sk-12345...'); // Automatically redacted
+```
+
 ## Provider Adapters
 
 Convert the same conversation into provider-specific formats. Adapters automatically skip hidden/snapshot messages and map roles correctly.

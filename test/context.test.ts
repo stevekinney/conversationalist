@@ -449,10 +449,10 @@ describe('truncateToTokenLimit', () => {
 
     // If it used myEnv.now(), the updatedAt should match.
     // truncateToTokenLimit re-creates messages if it truncates.
-    // In this case, conv has 1 message. 
+    // In this case, conv has 1 message.
     // If it uses options.estimateTokens (100), 100 > 10, so it truncates.
     // If it uses myEnv.estimateTokens (1), 1 <= 10, so it doesn't truncate.
-    
+
     expect(truncated.messages.length).toBe(0); // Should have used the 100 tokens estimator
     expect(truncated.updatedAt).toBe('2025-01-01T00:00:00.000Z'); // Should have used myEnv.now()
   });

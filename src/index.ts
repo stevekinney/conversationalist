@@ -108,3 +108,6 @@ export {
   truncateFromPosition,
   truncateToTokenLimit,
 } from './context';
+
+// Plugins
+export { piiRedactionPlugin } from './plugins/pii-redaction';
