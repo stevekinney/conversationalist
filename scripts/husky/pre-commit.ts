@@ -24,11 +24,15 @@ const staged = await getStagedFiles();
 if (staged.includes('package.json')) {
   info('package.json is staged');
 
-  if (!staged.includes('bun.lock')) {
-    warning('bun.lock is not staged');
+  // Check if bun.lock has any changes (staged or unstaged)
+  const lockStatus = await $`git status --porcelain bun.lock`.text();
+  const lockHasChanges = lockStatus.trim().length > 0;
+
+  if (lockHasChanges && !staged.includes('bun.lock')) {
+    warning('bun.lock is not staged but has changes');
     info('Run bun install and stage bun.lock');
     ok = false;
-  } else {
+  } else if (staged.includes('bun.lock')) {
     info('Dependencies changed, installing…');
     try {
       await $`bun install`;
