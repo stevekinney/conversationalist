@@ -407,9 +407,15 @@ history.appendAssistantMessage('How are you?');
 history.undo(); // State reverts to just "Hello!"
 history.redo(); // State advances back to "How are you?"
 
+// Convenience methods for all library utilities are built-in
+history.appendUserMessage('Another message');
+history.redactMessageAtPosition(0);
+history.truncateToTokenLimit(4000);
+
 // Query methods are also available
 const messages = history.getMessages();
 const stats = history.getStatistics();
+const tokens = history.estimateTokens();
 
 ### Conversation Branching
 
@@ -428,9 +434,25 @@ console.log(history.current.messages[0].content); // "Path B"
 
 history.switchToBranch(0);
 console.log(history.current.messages[0].content); // "Path A"
-````
+```
 
-````
+### Serialization
+
+You can serialize the entire history tree (including all branches) to JSON and reconstruct it later.
+
+```ts
+// 1. Save to JSON
+const json = history.toJSON();
+// localStorage.setItem('chat_history', JSON.stringify(json));
+
+// 2. Restore from JSON
+const restored = ConversationHistory.from(json);
+
+// You can also provide a new environment (e.g. with fresh token counters)
+const restoredWithEnv = ConversationHistory.from(json, {
+  estimateTokens: myNewEstimator
+});
+```
 
 ## Integration
 

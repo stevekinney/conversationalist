@@ -102,3 +102,19 @@ export type TokenEstimator = (message: Message) => number;
  * A plugin that can transform a MessageInput before it is appended.
  */
 export type MessagePlugin = (input: MessageInput) => MessageInput;
+
+/**
+ * Serialized form of a single node in the conversation history tree.
+ */
+export interface HistoryNodeJSON {
+  conversation: ConversationJSON;
+  children: HistoryNodeJSON[];
+}
+
+/**
+ * Serialized form of the entire conversation history.
+ */
+export interface ConversationHistoryJSON {
+  root: HistoryNodeJSON;
+  currentPath: number[];
+}

@@ -12,6 +12,7 @@ import {
   appendUserMessage,
   collapseSystemMessages,
   computeConversationStatistics,
+  deserializeConversation,
   getConversationMessages,
   getFirstSystemMessage,
   getMessageAtPosition,
@@ -38,6 +39,8 @@ import {
 } from './streaming';
 import type {
   Conversation,
+  ConversationHistoryJSON,
+  HistoryNodeJSON,
   Message,
   MessageInput,
   TokenEstimator,
@@ -320,6 +323,75 @@ export class ConversationHistory {
 
   cancelStreamingMessage(messageId: string): void {
     this.push(cancelStreamingMessage(this.current, messageId, this.env));
+  }
+
+  /**
+   * Serializes the entire history tree and current state to JSON.
+   */
+  toJSON(): ConversationHistoryJSON {
+    const getPath = (node: HistoryNode): number[] => {
+      const path: number[] = [];
+      let curr = node;
+      while (curr.parent) {
+        path.unshift(curr.parent.children.indexOf(curr));
+        curr = curr.parent;
+      }
+      return path;
+    };
+
+    const serializeNode = (node: HistoryNode): HistoryNodeJSON => ({
+      conversation: serializeConversation(node.conversation),
+      children: node.children.map(serializeNode),
+    });
+
+    let root = this.currentNode;
+    while (root.parent) {
+      root = root.parent;
+    }
+
+    return {
+      root: serializeNode(root),
+      currentPath: getPath(this.currentNode),
+    };
+  }
+
+  /**
+   * Reconstructs a ConversationHistory instance from JSON.
+   */
+  static from(
+    json: ConversationHistoryJSON,
+    environment?: Partial<ConversationEnvironment>,
+  ): ConversationHistory {
+    const history = new ConversationHistory(
+      deserializeConversation(json.root.conversation),
+      environment,
+    );
+
+    // Recursive function to build the tree
+    const buildTree = (
+      nodeJSON: HistoryNodeJSON,
+      parentNode: HistoryNode,
+    ): HistoryNode => {
+      const node: HistoryNode = {
+        conversation: deserializeConversation(nodeJSON.conversation),
+        parent: parentNode,
+        children: [],
+      };
+      node.children = nodeJSON.children.map((child) => buildTree(child, node));
+      return node;
+    };
+
+    const rootNode = history.currentNode;
+    rootNode.children = json.root.children.map((child) => buildTree(child, rootNode));
+
+    // Traverse to find the current node
+    let current = rootNode;
+    for (const index of json.currentPath) {
+      current = current.children[index]!;
+    }
+    history.currentNode = current;
+
+    return history;
   }
 
   /**

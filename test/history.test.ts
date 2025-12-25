@@ -297,5 +297,30 @@ describe('ConversationHistory', () => {
       history.cancelStreamingMessage(nextId);
       expect(history.current.messages.length).toBe(1);
     });
+
+    it('should support serialization and deserialization of the full history tree', () => {
+      const history = new ConversationHistory(createConversation({ title: 'Root' }));
+      history.appendUserMessage('V1');
+      history.undo();
+      history.appendUserMessage('V2');
+      history.appendAssistantMessage('V2-A');
+
+      const json = history.toJSON();
+      const restored = ConversationHistory.from(json);
+
+      expect(restored.current.title).toBe('Root');
+      expect(restored.current.messages).toHaveLength(2);
+      expect(restored.current.messages[0].content).toBe('V2');
+      expect(restored.current.messages[1].content).toBe('V2-A');
+
+      restored.undo();
+      restored.undo();
+      expect(restored.current.messages).toHaveLength(0);
+
+      // Check the other branch
+      restored.redo(0);
+      expect(restored.current.messages).toHaveLength(1);
+      expect(restored.current.messages[0].content).toBe('V1');
+    });
   });
 });

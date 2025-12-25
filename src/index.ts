@@ -89,6 +89,7 @@ export { pipeConversation, withConversation } from './with-conversation';
 
 // History utility
 export { bindToConversationHistory, ConversationHistory } from './history';
+export type { ConversationHistoryJSON, HistoryNodeJSON } from './types';
 
 // Streaming utilities
 export {
