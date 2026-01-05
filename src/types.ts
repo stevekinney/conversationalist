@@ -1,5 +1,11 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
+/**
+ * Current schema version for ConversationJSON.
+ * Increment when making breaking changes to the schema.
+ */
+export const CURRENT_SCHEMA_VERSION = 1;
+
 export type MessageRole =
   | 'user'
   | 'assistant'
@@ -72,6 +78,7 @@ export interface Message {
 export type ConversationStatus = 'active' | 'archived' | 'deleted';
 
 export interface ConversationJSON {
+  schemaVersion: number;
   id: string;
   title?: string | undefined;
   status: ConversationStatus;
@@ -118,3 +125,51 @@ export interface ConversationHistoryJSON {
   root: HistoryNodeJSON;
   currentPath: number[];
 }
+
+/**
+ * Base options for all export operations.
+ */
+export interface ExportOptions {
+  /**
+   * When true, produces deterministic output with sorted keys and messages.
+   * Useful for testing, diffing, and content-addressable storage.
+   * @default false
+   */
+  deterministic?: boolean;
+
+  /**
+   * When true, strips transient metadata (keys starting with '_').
+   * @default false
+   */
+  stripTransient?: boolean;
+
+  /**
+   * When true, redacts tool call arguments with '[REDACTED]'.
+   * @default false
+   */
+  redactToolArguments?: boolean;
+
+  /**
+   * When true, redacts tool result content with '[REDACTED]'.
+   * @default false
+   */
+  redactToolResults?: boolean;
+}
+
+/**
+ * Options for exporting to markdown format.
+ */
+export interface ToMarkdownOptions extends ExportOptions {
+  /**
+   * When true, includes YAML frontmatter with full metadata for lossless round-trip.
+   * Headers include message ID: `### Role (msg-id)`
+   * @default false
+   */
+  includeMetadata?: boolean;
+}
+
+/**
+ * Options for serializing conversations to JSON.
+ * Alias for ExportOptions for API consistency.
+ */
+export type SerializeOptions = ExportOptions;

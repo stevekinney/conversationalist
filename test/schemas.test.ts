@@ -8,6 +8,7 @@ import {
   messageRoleSchema,
   multiModalContentSchema,
 } from '../src/schemas';
+import { CURRENT_SCHEMA_VERSION } from '../src/types';
 
 describe('schemas', () => {
   test('messageRoleSchema accepts tool-use literal', () => {
@@ -40,6 +41,7 @@ describe('schemas', () => {
   test('conversationSchema basic shape', () => {
     const now = new Date().toISOString();
     const c = {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'c1',
       status: 'active',
       metadata: {},
@@ -58,6 +60,7 @@ describe('schemas', () => {
   });
 
   test('conversationShape has all required fields', () => {
+    expect(conversationShape).toHaveProperty('schemaVersion');
     expect(conversationShape).toHaveProperty('id');
     expect(conversationShape).toHaveProperty('title');
     expect(conversationShape).toHaveProperty('status');
@@ -80,6 +83,7 @@ describe('schemas', () => {
 
     const now = new Date().toISOString();
     const testData = {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'test-id',
       status: 'active' as const,
       metadata: {},
@@ -98,6 +102,7 @@ describe('schemas', () => {
     const schemaShape = (conversationSchema as any).shape;
 
     // Check that the same fields exist
+    expect('schemaVersion' in schemaShape).toBe(true);
     expect('id' in schemaShape).toBe(true);
     expect('title' in schemaShape).toBe(true);
     expect('status' in schemaShape).toBe(true);
@@ -125,6 +130,7 @@ describe('schemas', () => {
 
     const now = new Date().toISOString();
     const testData = {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'original-id',
       type: 'conversation',
       status: 'active' as const,

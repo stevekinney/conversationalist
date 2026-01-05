@@ -20,11 +20,17 @@ import type {
   ConversationStatus,
   Message,
   MessageInput,
+  MessageJSON,
+  SerializeOptions,
 } from './types';
+import { CURRENT_SCHEMA_VERSION } from './types';
 import {
   createMessage,
   messageHasImages,
   normalizeContent,
+  sortMessagesByPosition,
+  sortObjectKeys,
+  stripTransientFromRecord,
   toReadonly,
 } from './utilities';
 
@@ -471,34 +477,131 @@ export function redactMessageAtPosition(
   return toReadonly(next);
 }
 
-export function serializeConversation(conversation: Conversation): ConversationJSON {
-  return {
-    id: conversation.id,
-    title: conversation.title,
-    status: conversation.status,
-    metadata: { ...conversation.metadata },
-    tags: [...conversation.tags],
-    messages: conversation.messages.map((m) => ({
+/** Placeholder used when redacting sensitive data */
+const REDACTED = '[REDACTED]';
+
+/**
+ * Migrates a conversation JSON object to the current schema version.
+ * Handles data from older versions that may not have a schemaVersion field.
+ */
+export function migrateConversationJSON(json: unknown): ConversationJSON {
+  // Handle non-object input
+  if (typeof json !== 'object' || json === null || Array.isArray(json)) {
+    return {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      id: '',
+      status: 'active',
+      metadata: {},
+      tags: [],
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  const data = json as ConversationJSON;
+
+  // If no schemaVersion, assume pre-versioning data (version 0) and add it
+  if (!('schemaVersion' in json)) {
+    return {
+      ...data,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+    };
+  }
+
+  // Future: add migration logic between versions here
+  return data;
+}
+
+/**
+ * Converts a conversation to a plain JSON-serializable object.
+ * Creates deep copies of all nested objects to ensure immutability.
+ */
+export function serializeConversation(
+  conversation: Conversation,
+  options: SerializeOptions = {},
+): ConversationJSON {
+  const {
+    deterministic = false,
+    stripTransient = false,
+    redactToolArguments = false,
+    redactToolResults = false,
+  } = options;
+
+  // Process conversation metadata
+  let metadata = { ...conversation.metadata };
+  if (stripTransient) {
+    metadata = stripTransientFromRecord(metadata);
+  }
+
+  // Process messages
+  let messages: MessageJSON[] = conversation.messages.map((m) => {
+    let msgMetadata = { ...m.metadata };
+    if (stripTransient) {
+      msgMetadata = stripTransientFromRecord(msgMetadata);
+    }
+
+    return {
       id: m.id,
       role: m.role,
       content: copyContent(m.content),
       position: m.position,
       createdAt: m.createdAt,
-      metadata: { ...m.metadata },
+      metadata: msgMetadata,
       hidden: m.hidden,
-      toolCall: m.toolCall ? { ...m.toolCall } : undefined,
-      toolResult: m.toolResult ? { ...m.toolResult } : undefined,
+      toolCall: m.toolCall
+        ? {
+            ...m.toolCall,
+            arguments: redactToolArguments ? REDACTED : m.toolCall.arguments,
+          }
+        : undefined,
+      toolResult: m.toolResult
+        ? {
+            ...m.toolResult,
+            content: redactToolResults ? REDACTED : m.toolResult.content,
+          }
+        : undefined,
       tokenUsage: m.tokenUsage ? { ...m.tokenUsage } : undefined,
       goalCompleted: m.goalCompleted,
-    })),
+    };
+  });
+
+  // Sort messages if deterministic
+  if (deterministic) {
+    messages = sortMessagesByPosition(messages);
+  }
+
+  let result: ConversationJSON = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    id: conversation.id,
+    title: conversation.title,
+    status: conversation.status,
+    metadata,
+    tags: [...conversation.tags],
+    messages,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
   };
+
+  // Sort keys if deterministic
+  if (deterministic) {
+    result = sortObjectKeys(result);
+  }
+
+  return result;
 }
 
-export function deserializeConversation(json: ConversationJSON): Conversation {
+/**
+ * Reconstructs a conversation from a JSON object.
+ * Automatically migrates data from older schema versions.
+ * Validates message positions are contiguous and tool results reference valid calls.
+ */
+export function deserializeConversation(json: unknown): Conversation {
+  // Migrate to current schema version
+  const migrated = migrateConversationJSON(json);
+
   try {
-    json.messages.reduce<{ toolUses: ToolUseIndex }>(
+    migrated.messages.reduce<{ toolUses: ToolUseIndex }>(
       (state, message, index) => {
         if (message.position !== index) {
           throw createInvalidPositionError(index, message.position);
@@ -519,16 +622,16 @@ export function deserializeConversation(json: ConversationJSON): Conversation {
       { toolUses: new Map<string, { name: string }>() },
     );
 
-    const messages: Message[] = json.messages.map((m) => createMessage(m));
+    const messages: Message[] = migrated.messages.map((m) => createMessage(m));
     const conv: Conversation = {
-      id: json.id,
-      title: json.title,
-      status: json.status,
-      metadata: { ...json.metadata },
-      tags: [...json.tags],
+      id: migrated.id,
+      title: migrated.title,
+      status: migrated.status,
+      metadata: { ...migrated.metadata },
+      tags: [...migrated.tags],
       messages,
-      createdAt: json.createdAt,
-      updatedAt: json.updatedAt,
+      createdAt: migrated.createdAt,
+      updatedAt: migrated.updatedAt,
     };
     return toReadonly(conv);
   } catch (error) {

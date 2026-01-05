@@ -15,6 +15,7 @@ import {
   getMessageByIdentifier,
   getSystemMessages,
   hasSystemMessage,
+  migrateConversationJSON,
   prependSystemMessage,
   redactMessageAtPosition,
   replaceSystemMessage,
@@ -23,6 +24,7 @@ import {
   toChatMessages,
 } from '../src/conversation';
 import { ConversationalistError } from '../src/errors';
+import { CURRENT_SCHEMA_VERSION } from '../src/types';
 
 describe('conversation (functional)', () => {
   test('create, append, statistics and encode', () => {
@@ -563,5 +565,185 @@ describe('system message management', () => {
     expect(c3.updatedAt).toBeDefined();
     expect(c5.updatedAt).toBeDefined();
     expect(new Date(c2.updatedAt).toISOString()).toBe(c2.updatedAt);
+  });
+});
+
+describe('migrateConversationJSON', () => {
+  test('handles null input', () => {
+    const result = migrateConversationJSON(null);
+    expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(result.id).toBe('');
+    expect(result.status).toBe('active');
+    expect(result.messages).toEqual([]);
+  });
+
+  test('handles array input', () => {
+    const result = migrateConversationJSON([]);
+    expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(result.id).toBe('');
+  });
+
+  test('handles primitive input', () => {
+    const result = migrateConversationJSON('string');
+    expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(result.id).toBe('');
+  });
+
+  test('adds schemaVersion to legacy data', () => {
+    const legacy = {
+      id: 'conv-1',
+      status: 'active',
+      metadata: {},
+      tags: [],
+      messages: [],
+      createdAt: '2024-01-15T10:00:00.000Z',
+      updatedAt: '2024-01-15T10:00:00.000Z',
+    };
+
+    const result = migrateConversationJSON(legacy);
+    expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(result.id).toBe('conv-1');
+  });
+
+  test('preserves existing schemaVersion', () => {
+    const data = {
+      schemaVersion: 99,
+      id: 'conv-1',
+      status: 'active',
+      metadata: {},
+      tags: [],
+      messages: [],
+      createdAt: '2024-01-15T10:00:00.000Z',
+      updatedAt: '2024-01-15T10:00:00.000Z',
+    };
+
+    const result = migrateConversationJSON(data);
+    expect(result.schemaVersion).toBe(99);
+  });
+});
+
+describe('serializeConversation options', () => {
+  test('stripTransient removes transient metadata from conversation', () => {
+    let c = createConversation();
+    c = {
+      ...c,
+      metadata: { _temp: 1, permanent: 'value' },
+    };
+
+    const result = serializeConversation(c, { stripTransient: true });
+    expect(result.metadata).toEqual({ permanent: 'value' });
+    expect(result.metadata).not.toHaveProperty('_temp');
+  });
+
+  test('stripTransient removes transient metadata from messages', () => {
+    let c = createConversation();
+    c = appendUserMessage(c, 'hello');
+    c = {
+      ...c,
+      messages: c.messages.map((m) => ({
+        ...m,
+        metadata: { ...m.metadata, _deliveryStatus: 'sent', source: 'web' },
+      })),
+    };
+
+    const result = serializeConversation(c, { stripTransient: true });
+    expect(result.messages[0].metadata).toEqual({ source: 'web' });
+    expect(result.messages[0].metadata).not.toHaveProperty('_deliveryStatus');
+  });
+
+  test('deterministic sorts messages by position', () => {
+    let c = createConversation();
+    c = appendUserMessage(c, 'first');
+    c = appendAssistantMessage(c, 'second');
+    c = appendUserMessage(c, 'third');
+
+    const result = serializeConversation(c, { deterministic: true });
+    expect(result.messages[0].position).toBe(0);
+    expect(result.messages[1].position).toBe(1);
+    expect(result.messages[2].position).toBe(2);
+  });
+
+  test('deterministic sorts object keys', () => {
+    let c = createConversation();
+    c = {
+      ...c,
+      metadata: { z: 1, a: 2, m: 3 },
+    };
+
+    const result = serializeConversation(c, { deterministic: true });
+    const keys = Object.keys(result.metadata);
+    expect(keys).toEqual(['a', 'm', 'z']);
+  });
+
+  test('redactToolArguments replaces tool arguments with [REDACTED]', () => {
+    let c = createConversation();
+    c = appendMessages(c, {
+      role: 'tool-use',
+      content: 'Calling search',
+      toolCall: { id: 'call-1', name: 'search', arguments: 'sensitive data' },
+    });
+
+    const result = serializeConversation(c, { redactToolArguments: true });
+    expect(result.messages[0].toolCall?.arguments).toBe('[REDACTED]');
+  });
+
+  test('redactToolResults replaces tool result content with [REDACTED]', () => {
+    let c = createConversation();
+    c = appendMessages(
+      c,
+      {
+        role: 'tool-use',
+        content: 'Calling search',
+        toolCall: { id: 'call-1', name: 'search', arguments: '{}' },
+      },
+      {
+        role: 'tool-result',
+        content: 'Result returned',
+        toolResult: { callId: 'call-1', content: 'sensitive result data' },
+      },
+    );
+
+    const result = serializeConversation(c, { redactToolResults: true });
+    expect(result.messages[1].toolResult?.content).toBe('[REDACTED]');
+  });
+
+  test('all options can be combined', () => {
+    let c = createConversation();
+    c = {
+      ...c,
+      metadata: { _temp: 1, z: 2, a: 3 },
+    };
+    c = appendMessages(
+      c,
+      {
+        role: 'tool-use',
+        content: 'Calling func',
+        metadata: { _tempMeta: 'x' },
+        toolCall: { id: 'call-1', name: 'func', arguments: 'args' },
+      },
+      {
+        role: 'tool-result',
+        content: 'Result',
+        toolResult: { callId: 'call-1', content: 'result' },
+      },
+    );
+
+    const result = serializeConversation(c, {
+      deterministic: true,
+      stripTransient: true,
+      redactToolArguments: true,
+      redactToolResults: true,
+    });
+
+    // Check transient stripped
+    expect(result.metadata).not.toHaveProperty('_temp');
+    expect(result.messages[0].metadata).not.toHaveProperty('_tempMeta');
+
+    // Check deterministic key sorting
+    expect(Object.keys(result.metadata)).toEqual(['a', 'z']);
+
+    // Check redaction
+    expect(result.messages[0].toolCall?.arguments).toBe('[REDACTED]');
+    expect(result.messages[1].toolResult?.content).toBe('[REDACTED]');
   });
 });

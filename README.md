@@ -2,7 +2,7 @@
 
 A TypeScript-first library for managing LLM conversation state with **immutable updates**, **type-safe APIs**, and **provider-agnostic adapters**.
 
-[![Tests](https://github.com/stevekinney/conversationalist/actions/workflows/test.yml/badge.svg)](https://github.com/stevekinney/conversationalist/actions/workflows/test.yml)
+[![CI](https://github.com/stevekinney/conversationalist/actions/workflows/ci.yml/badge.svg)](https://github.com/stevekinney/conversationalist/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## What is Conversationalist?
@@ -611,6 +611,112 @@ const restoredWithEnv = ConversationHistory.from(json, {
 });
 ```
 
+## Advanced Serialization
+
+### Schema Versioning
+
+Conversations include a `schemaVersion` field for forward compatibility. When loading older data, use `migrateConversationJSON` to upgrade it to the current schema:
+
+```ts
+import {
+  migrateConversationJSON,
+  deserializeConversation,
+  CURRENT_SCHEMA_VERSION,
+} from 'conversationalist';
+
+// Old data without schemaVersion
+const legacyData = JSON.parse(oldStorage);
+const migrated = migrateConversationJSON(legacyData);
+// migrated.schemaVersion === CURRENT_SCHEMA_VERSION
+
+const conversation = deserializeConversation(migrated);
+```
+
+### Serialization Options
+
+`serializeConversation` accepts options for controlling the output:
+
+```ts
+import { serializeConversation } from 'conversationalist';
+
+const json = serializeConversation(conversation, {
+  // Sort keys and messages for stable, diff-friendly output
+  deterministic: true,
+
+  // Remove metadata keys starting with '_' (transient UI state)
+  stripTransient: true,
+
+  // Replace tool arguments with '[REDACTED]'
+  redactToolArguments: true,
+
+  // Replace tool result content with '[REDACTED]'
+  redactToolResults: true,
+});
+```
+
+### Transient Metadata Convention
+
+Keys prefixed with `_` are considered transient—temporary UI state that shouldn't be persisted:
+
+```ts
+import {
+  isTransientKey,
+  stripTransientFromRecord,
+  stripTransientMetadata,
+} from 'conversationalist';
+
+// Check if a key is transient
+isTransientKey('_tempId'); // true
+isTransientKey('source'); // false
+
+// Strip transient keys from a metadata object
+stripTransientFromRecord({ _loading: true, source: 'web' });
+// { source: 'web' }
+
+// Strip transient metadata from an entire conversation
+const cleaned = stripTransientMetadata(conversation);
+```
+
+### Deterministic Output
+
+For reproducible snapshots or tests, use the deterministic utilities:
+
+```ts
+import { sortObjectKeys, sortMessagesByPosition } from 'conversationalist';
+
+// Sort object keys alphabetically (recursive)
+const sorted = sortObjectKeys({ z: 1, a: 2, nested: { b: 3, a: 4 } });
+// { a: 2, nested: { a: 4, b: 3 }, z: 1 }
+
+// Sort messages by position, createdAt, then id
+const orderedMessages = sortMessagesByPosition(messages);
+```
+
+### Role Labels
+
+Export human-readable labels for message roles:
+
+```ts
+import {
+  ROLE_LABELS,
+  LABEL_TO_ROLE,
+  getRoleLabel,
+  getRoleFromLabel,
+} from 'conversationalist';
+
+// Get display label for a role
+getRoleLabel('tool-use'); // 'Tool Use'
+getRoleLabel('assistant'); // 'Assistant'
+
+// Get role from a label
+getRoleFromLabel('Tool Result'); // 'tool-result'
+getRoleFromLabel('Unknown'); // undefined
+
+// Access the mappings directly
+ROLE_LABELS['developer']; // 'Developer'
+LABEL_TO_ROLE['System']; // 'system'
+```
+
 ### Markdown Serialization
 
 You can also convert a conversation to Markdown format for human-readable storage or export, and restore it later.
@@ -799,16 +905,19 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 
 ## API Overview
 
-| Category         | Key Functions                                                                                            |
-| :--------------- | :------------------------------------------------------------------------------------------------------- |
-| **Creation**     | `createConversation`, `serializeConversation`, `deserializeConversation`                                 |
-| **Appending**    | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendMessages`                   |
-| **Streaming**    | `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage` |
-| **Modification** | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                              |
-| **Context**      | `truncateToTokenLimit`, `getRecentMessages`, `estimateConversationTokens`                                |
-| **Querying**     | `getConversationMessages`, `getMessageByIdentifier`, `computeConversationStatistics`                     |
-| **Conversion**   | `toMarkdown`, `fromMarkdown`, `toChatMessages`, `pairToolCallsWithResults`                               |
-| **History**      | `ConversationHistory`, `bindToConversationHistory`                                                       |
+| Category          | Key Functions                                                                                            |
+| :---------------- | :------------------------------------------------------------------------------------------------------- |
+| **Creation**      | `createConversation`, `serializeConversation`, `deserializeConversation`, `migrateConversationJSON`      |
+| **Appending**     | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendMessages`                   |
+| **Streaming**     | `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage` |
+| **Modification**  | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                              |
+| **Context**       | `truncateToTokenLimit`, `getRecentMessages`, `estimateConversationTokens`                                |
+| **Querying**      | `getConversationMessages`, `getMessageByIdentifier`, `computeConversationStatistics`                     |
+| **Conversion**    | `toMarkdown`, `fromMarkdown`, `toChatMessages`, `pairToolCallsWithResults`                               |
+| **Role Labels**   | `ROLE_LABELS`, `LABEL_TO_ROLE`, `getRoleLabel`, `getRoleFromLabel`                                       |
+| **Transient**     | `isTransientKey`, `stripTransientFromRecord`, `stripTransientMetadata`                                   |
+| **Deterministic** | `sortObjectKeys`, `sortMessagesByPosition`                                                               |
+| **History**       | `ConversationHistory`, `bindToConversationHistory`                                                       |
 
 ## Deterministic Environments (Testing)
 

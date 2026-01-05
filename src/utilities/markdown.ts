@@ -8,13 +8,23 @@ import type {
   Message,
   MessageRole,
   TokenUsage,
+  ToMarkdownOptions,
   ToolCall,
   ToolResult,
 } from '../types';
 import { messageParts } from './message';
 import { toReadonly } from './type-helpers';
 
-const ROLE_DISPLAY_NAMES: Record<MessageRole, string> = {
+/**
+ * Maps message roles to human-readable display labels.
+ *
+ * @example
+ * ```ts
+ * ROLE_LABELS['tool-use']; // 'Tool Use'
+ * ROLE_LABELS.assistant;   // 'Assistant'
+ * ```
+ */
+export const ROLE_LABELS: Record<MessageRole, string> = {
   user: 'User',
   assistant: 'Assistant',
   system: 'System',
@@ -24,7 +34,19 @@ const ROLE_DISPLAY_NAMES: Record<MessageRole, string> = {
   snapshot: 'Snapshot',
 };
 
-const DISPLAY_NAME_TO_ROLE: Record<string, MessageRole> = {
+// Internal alias for backward compatibility
+const ROLE_DISPLAY_NAMES = ROLE_LABELS;
+
+/**
+ * Maps display labels back to message roles.
+ *
+ * @example
+ * ```ts
+ * LABEL_TO_ROLE['Tool Use']; // 'tool-use'
+ * LABEL_TO_ROLE.User;        // 'user'
+ * ```
+ */
+export const LABEL_TO_ROLE: Record<string, MessageRole> = {
   User: 'user',
   Assistant: 'assistant',
   System: 'system',
@@ -33,6 +55,42 @@ const DISPLAY_NAME_TO_ROLE: Record<string, MessageRole> = {
   'Tool Result': 'tool-result',
   Snapshot: 'snapshot',
 };
+
+// Internal alias for backward compatibility
+const DISPLAY_NAME_TO_ROLE = LABEL_TO_ROLE;
+
+/**
+ * Gets the human-readable display label for a message role.
+ *
+ * @param role - The message role
+ * @returns The display label for the role
+ *
+ * @example
+ * ```ts
+ * getRoleLabel('assistant');  // 'Assistant'
+ * getRoleLabel('tool-use');   // 'Tool Use'
+ * ```
+ */
+export function getRoleLabel(role: MessageRole): string {
+  return ROLE_LABELS[role];
+}
+
+/**
+ * Gets the message role from a display label.
+ *
+ * @param label - The display label
+ * @returns The message role, or undefined if the label is not recognized
+ *
+ * @example
+ * ```ts
+ * getRoleFromLabel('Assistant');  // 'assistant'
+ * getRoleFromLabel('Tool Use');   // 'tool-use'
+ * getRoleFromLabel('Unknown');    // undefined
+ * ```
+ */
+export function getRoleFromLabel(label: string): MessageRole | undefined {
+  return LABEL_TO_ROLE[label];
+}
 
 /**
  * Formats a message's content for markdown output.
@@ -85,28 +143,6 @@ interface ConversationFrontmatter {
   createdAt: string;
   updatedAt: string;
   messages: Record<string, MessageFrontmatter>;
-}
-
-/**
- * Options for the toMarkdown function.
- */
-export interface ToMarkdownOptions {
-  /**
-   * Whether to include metadata (YAML frontmatter with message metadata)
-   * for lossless round-trip conversion.
-   *
-   * When `true`:
-   * - Includes YAML frontmatter with conversation and message metadata
-   * - Headers include message ID: `### Role (msg-id)`
-   * - Supports lossless round-trip via `fromMarkdown`
-   *
-   * When `false` (default):
-   * - Outputs clean, human-readable markdown
-   * - Headers only include role: `### Role`
-   *
-   * @default false
-   */
-  includeMetadata?: boolean;
 }
 
 /**

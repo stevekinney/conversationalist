@@ -1,9 +1,22 @@
+// Re-export types that were moved to types.ts for backward compatibility
+export type { ToMarkdownOptions } from '../types';
+
 // Content normalization
 export { normalizeContent, toMultiModalArray } from './content';
 
+// Deterministic output
+export { sortMessagesByPosition, sortObjectKeys } from './deterministic';
+
 // Markdown conversion
-export type { ToMarkdownOptions } from './markdown';
-export { fromMarkdown, MarkdownParseError, toMarkdown } from './markdown';
+export {
+  fromMarkdown,
+  getRoleFromLabel,
+  getRoleLabel,
+  LABEL_TO_ROLE,
+  MarkdownParseError,
+  ROLE_LABELS,
+  toMarkdown,
+} from './markdown';
 
 // Message utilities
 export {
@@ -18,6 +31,13 @@ export {
 // Tool call pairing
 export type { ToolCallPair } from './tool-calls';
 export { pairToolCallsWithResults } from './tool-calls';
+
+// Transient metadata
+export {
+  isTransientKey,
+  stripTransientFromRecord,
+  stripTransientMetadata,
+} from './transient';
 
 // Type helpers
 export { hasOwnProperty, toReadonly } from './type-helpers';

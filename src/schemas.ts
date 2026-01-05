@@ -84,6 +84,7 @@ export const conversationStatusSchema = z.enum([
 
 // Export the raw shape for direct use with storage systems
 export const conversationShape = {
+  schemaVersion: z.number().int().min(1),
   id: z.string(),
   title: z.string().optional(),
   status: conversationStatusSchema,

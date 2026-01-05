@@ -11,14 +11,18 @@ export type {
   Conversation,
   ConversationJSON,
   ConversationStatus,
+  ExportOptions,
   Message,
   MessageInput,
   MessageJSON,
   MessageRole,
+  SerializeOptions,
   TokenUsage,
+  ToMarkdownOptions,
   ToolCall,
   ToolResult,
 } from './types';
+export { CURRENT_SCHEMA_VERSION } from './types';
 
 // Schemas
 export {
@@ -50,6 +54,7 @@ export {
   getMessageByIdentifier,
   getSystemMessages,
   hasSystemMessage,
+  migrateConversationJSON,
   prependSystemMessage,
   redactMessageAtPosition,
   replaceSystemMessage,
@@ -77,12 +82,21 @@ export {
 } from './errors';
 
 // Utilities
-export type { ToMarkdownOptions, ToolCallPair } from './utilities';
+export type { ToolCallPair } from './utilities';
 export {
   fromMarkdown,
+  getRoleFromLabel,
+  getRoleLabel,
+  isTransientKey,
+  LABEL_TO_ROLE,
   MarkdownParseError,
   normalizeContent,
   pairToolCallsWithResults,
+  ROLE_LABELS,
+  sortMessagesByPosition,
+  sortObjectKeys,
+  stripTransientFromRecord,
+  stripTransientMetadata,
   toMarkdown,
   toMultiModalArray,
 } from './utilities';

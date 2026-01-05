@@ -1,9 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { Conversation, Message } from '../../src/types';
+import type { Conversation, Message, MessageRole } from '../../src/types';
 import {
   fromMarkdown,
+  getRoleFromLabel,
+  getRoleLabel,
+  LABEL_TO_ROLE,
   MarkdownParseError,
+  ROLE_LABELS,
   toMarkdown,
 } from '../../src/utilities/markdown';
 
@@ -1153,5 +1157,85 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
         expect(parsedMsg.content).toBe(originalMsg.content);
       }
     }
+  });
+});
+
+describe('role labels', () => {
+  describe('ROLE_LABELS', () => {
+    test('exports all message roles', () => {
+      const roles: MessageRole[] = [
+        'user',
+        'assistant',
+        'system',
+        'developer',
+        'tool-use',
+        'tool-result',
+        'snapshot',
+      ];
+
+      for (const role of roles) {
+        expect(ROLE_LABELS[role]).toBeDefined();
+        expect(typeof ROLE_LABELS[role]).toBe('string');
+      }
+    });
+
+    test('has correct labels for each role', () => {
+      expect(ROLE_LABELS.user).toBe('User');
+      expect(ROLE_LABELS.assistant).toBe('Assistant');
+      expect(ROLE_LABELS.system).toBe('System');
+      expect(ROLE_LABELS.developer).toBe('Developer');
+      expect(ROLE_LABELS['tool-use']).toBe('Tool Use');
+      expect(ROLE_LABELS['tool-result']).toBe('Tool Result');
+      expect(ROLE_LABELS.snapshot).toBe('Snapshot');
+    });
+  });
+
+  describe('LABEL_TO_ROLE', () => {
+    test('provides inverse mapping of ROLE_LABELS', () => {
+      for (const [role, label] of Object.entries(ROLE_LABELS)) {
+        expect(LABEL_TO_ROLE[label]).toBe(role);
+      }
+    });
+
+    test('has correct roles for each label', () => {
+      expect(LABEL_TO_ROLE['User']).toBe('user');
+      expect(LABEL_TO_ROLE['Assistant']).toBe('assistant');
+      expect(LABEL_TO_ROLE['System']).toBe('system');
+      expect(LABEL_TO_ROLE['Developer']).toBe('developer');
+      expect(LABEL_TO_ROLE['Tool Use']).toBe('tool-use');
+      expect(LABEL_TO_ROLE['Tool Result']).toBe('tool-result');
+      expect(LABEL_TO_ROLE['Snapshot']).toBe('snapshot');
+    });
+  });
+
+  describe('getRoleLabel', () => {
+    test('returns correct label for each role', () => {
+      expect(getRoleLabel('user')).toBe('User');
+      expect(getRoleLabel('assistant')).toBe('Assistant');
+      expect(getRoleLabel('system')).toBe('System');
+      expect(getRoleLabel('developer')).toBe('Developer');
+      expect(getRoleLabel('tool-use')).toBe('Tool Use');
+      expect(getRoleLabel('tool-result')).toBe('Tool Result');
+      expect(getRoleLabel('snapshot')).toBe('Snapshot');
+    });
+  });
+
+  describe('getRoleFromLabel', () => {
+    test('returns correct role for each label', () => {
+      expect(getRoleFromLabel('User')).toBe('user');
+      expect(getRoleFromLabel('Assistant')).toBe('assistant');
+      expect(getRoleFromLabel('System')).toBe('system');
+      expect(getRoleFromLabel('Developer')).toBe('developer');
+      expect(getRoleFromLabel('Tool Use')).toBe('tool-use');
+      expect(getRoleFromLabel('Tool Result')).toBe('tool-result');
+      expect(getRoleFromLabel('Snapshot')).toBe('snapshot');
+    });
+
+    test('returns undefined for unknown labels', () => {
+      expect(getRoleFromLabel('Unknown')).toBeUndefined();
+      expect(getRoleFromLabel('')).toBeUndefined();
+      expect(getRoleFromLabel('user')).toBeUndefined(); // lowercase, not valid
+      expect(getRoleFromLabel('ASSISTANT')).toBeUndefined(); // uppercase, not valid
+    });
   });
 });

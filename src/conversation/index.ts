@@ -35,7 +35,11 @@ export {
 export { redactMessageAtPosition } from './modify';
 
 // Serialization
-export { deserializeConversation, serializeConversation } from './serialization';
+export {
+  deserializeConversation,
+  migrateConversationJSON,
+  serializeConversation,
+} from './serialization';
 
 // Transform
 export { toChatMessages } from './transform';
