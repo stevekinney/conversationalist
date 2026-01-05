@@ -308,7 +308,9 @@ describe('utilities: toMarkdown', () => {
         {
           id: 'msg-1',
           role: 'user',
-          content: [{ type: 'image', url: 'https://example.com/photo.jpg', text: 'A cat' }],
+          content: [
+            { type: 'image', url: 'https://example.com/photo.jpg', text: 'A cat' },
+          ],
           position: 0,
           createdAt: '2024-01-15T10:00:00.000Z',
           metadata: {},
@@ -620,7 +622,9 @@ Content`;
     test('throws MarkdownParseError when required id field is missing from frontmatter', () => {
       // gray-matter parses most YAML gracefully, so test for missing required fields instead
       expect(() => fromMarkdown('---\nstatus: active\n---')).toThrow(MarkdownParseError);
-      expect(() => fromMarkdown('---\nstatus: active\n---')).toThrow('missing required field "id"');
+      expect(() => fromMarkdown('---\nstatus: active\n---')).toThrow(
+        'missing required field "id"',
+      );
     });
 
     test('throws MarkdownParseError for unknown role', () => {

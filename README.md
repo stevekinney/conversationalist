@@ -511,14 +511,11 @@ const conversation = pipeConversation(
 
 Use the `ConversationHistory` class to manage a stack of conversation states. Because every change returns a new immutable object, supporting undo/redo is built into the architecture.
 
-````ts
-import {
-  ConversationHistory,
-  createConversation,
-  appendUserMessage,
-} from 'conversationalist';
+```ts
+import { ConversationHistory } from 'conversationalist';
 
-const history = new ConversationHistory(createConversation());
+// Create a new history (defaults to an empty conversation)
+const history = new ConversationHistory();
 
 // You can use convenience methods that automatically track state
 history.appendUserMessage('Hello!');
@@ -545,7 +542,7 @@ const tokens = history.estimateTokens();
 #### Using DOM Events
 
 ```ts
-const history = new ConversationHistory(createConversation());
+const history = new ConversationHistory();
 
 // addEventListener returns a convenient unsubscribe function
 const unsubscribe = history.addEventListener('change', (event) => {
@@ -582,12 +579,12 @@ controller.abort();
 The `ConversationHistory` class supports branching. When you undo to a previous state and push a new update, it creates an alternate path instead of deleting the old history.
 
 ```ts
-const history = new ConversationHistory(createConversation());
+const history = new ConversationHistory();
 
-history.push(appendUserMessage(history.current, 'Path A'));
+history.appendUserMessage('Path A');
 history.undo();
 
-history.push(appendUserMessage(history.current, 'Path B'));
+history.appendUserMessage('Path B');
 
 console.log(history.branchCount); // 2
 console.log(history.current.messages[0].content); // "Path B"
@@ -612,6 +609,28 @@ const restored = ConversationHistory.from(json);
 const restoredWithEnv = ConversationHistory.from(json, {
   estimateTokens: myNewEstimator,
 });
+```
+
+### Markdown Serialization
+
+You can also convert a conversation to Markdown format for human-readable storage or export, and restore it later.
+
+```ts
+// Export to clean, readable Markdown
+const markdown = history.toMarkdown();
+// ### User
+//
+// Hello!
+//
+// ### Assistant
+//
+// Hi there!
+
+// Export with full metadata (lossless round-trip)
+const markdownWithMetadata = history.toMarkdown({ includeMetadata: true });
+
+// Restore from Markdown
+const restored = ConversationHistory.fromMarkdown(markdownWithMetadata);
 ```
 
 ## Integration
@@ -649,16 +668,14 @@ For more complex applications, you can wrap the logic into a custom hook. This e
 
 ```tsx
 import { useState, useCallback, useEffect } from 'react';
-import {
-  createConversation,
-  ConversationHistory,
-  toChatMessages,
-} from 'conversationalist';
+import { createConversation, ConversationHistory } from 'conversationalist';
 
 export function useChat(initialTitle?: string) {
   // 1. Initialize history (this could also come from context or props)
-  const [history] = useState(
-    () => new ConversationHistory(createConversation({ title: initialTitle })),
+  const [history] = useState(() =>
+    initialTitle
+      ? new ConversationHistory(createConversation({ title: initialTitle }))
+      : new ConversationHistory(),
   );
 
   // 2. Sync history with local state for reactivity
@@ -762,10 +779,10 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 
 ```svelte
 <script lang="ts">
-  import { ConversationHistory, createConversation } from 'conversationalist';
+  import { ConversationHistory } from 'conversationalist';
 
   // history implements the Svelte store contract
-  const history = new ConversationHistory(createConversation());
+  const history = new ConversationHistory();
 </script>
 
 <div>
@@ -813,4 +830,3 @@ bun install
 bun test
 bun run build
 ```
-````

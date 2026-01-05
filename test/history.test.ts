@@ -25,6 +25,13 @@ describe('ConversationHistory', () => {
     expect(history.canRedo).toBe(false);
   });
 
+  it('should initialize with an empty conversation by default', () => {
+    const history = new ConversationHistory();
+    expect(history.current.messages).toHaveLength(0);
+    expect(history.current.status).toBe('active');
+    expect(history.canUndo).toBe(false);
+  });
+
   it('should support undo and redo', () => {
     const v1 = createConversation({ title: 'V1' });
     const history = new ConversationHistory(v1);
@@ -243,6 +250,14 @@ describe('ConversationHistory', () => {
       expect(history.getStatistics().total).toBe(1);
       expect(history.serialize().title).toBe('Query');
       expect(history.toChatMessages()).toHaveLength(1);
+      expect(history.toMarkdown()).toContain('### User');
+      expect(history.toMarkdown({ includeMetadata: true })).toContain('---');
+
+      const restored = ConversationHistory.fromMarkdown(
+        history.toMarkdown({ includeMetadata: true }),
+      );
+      expect(restored.current.messages).toHaveLength(1);
+      expect(restored.current.messages[0].content).toBe('Hello');
       expect(history.estimateTokens()).toBeGreaterThan(0);
       expect(history.getRecentMessages(1)).toHaveLength(1);
       expect(history.hasSystemMessage()).toBe(false);
@@ -255,15 +270,18 @@ describe('ConversationHistory', () => {
     it('should support mutation methods', () => {
       const history = new ConversationHistory(createConversation());
 
-      history.appendUserMessage('User msg');
+      history.appendMessages({ role: 'user', content: 'First' });
       expect(history.current.messages.length).toBe(1);
+
+      history.appendUserMessage('User msg');
+      expect(history.current.messages.length).toBe(2);
       expect(history.canUndo).toBe(true);
 
       history.appendAssistantMessage('Assistant msg');
-      expect(history.current.messages.length).toBe(2);
+      expect(history.current.messages.length).toBe(3);
 
       history.appendSystemMessage('System msg');
-      expect(history.current.messages.length).toBe(3);
+      expect(history.current.messages.length).toBe(4);
 
       history.prependSystemMessage('First system');
       expect(history.current.messages[0].content).toBe('First system');
@@ -278,7 +296,7 @@ describe('ConversationHistory', () => {
       expect(history.getMessageAtPosition(1)?.content).toBe('[REDACTED]');
 
       history.truncateFromPosition(1);
-      expect(history.current.messages.length).toBe(3); // system + messages from pos 1
+      expect(history.current.messages.length).toBe(4); // system + messages from pos 1
 
       history.truncateToTokenLimit(10);
       expect(history.current.messages.length).toBeLessThan(4);
@@ -409,6 +427,18 @@ describe('ConversationHistory', () => {
       const conversation = createConversation();
       const history = new ConversationHistory(conversation);
       expect(history.getSnapshot()).toBe(conversation);
+    });
+
+    it('should expose the environment via env getter', () => {
+      const customEnv = { randomId: () => 'custom-id' };
+      const history = new ConversationHistory(createConversation(), customEnv);
+      expect(history.env.randomId()).toBe('custom-id');
+    });
+
+    it('should handle null callback in addEventListener', () => {
+      const history = new ConversationHistory();
+      const result = history.addEventListener('change', null);
+      expect(result).toBeUndefined();
     });
   });
 });

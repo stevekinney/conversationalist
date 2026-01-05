@@ -12,6 +12,7 @@ import {
   appendUserMessage,
   collapseSystemMessages,
   computeConversationStatistics,
+  createConversation,
   deserializeConversation,
   getConversationMessages,
   getFirstSystemMessage,
@@ -45,6 +46,7 @@ import type {
   MessageInput,
   TokenUsage,
 } from './types';
+import { fromMarkdown, toMarkdown, type ToMarkdownOptions } from './utilities';
 
 /**
  * Event detail for conversation history changes.
@@ -76,7 +78,10 @@ export class ConversationHistory extends EventTarget {
   private currentNode: HistoryNode;
   private environment: ConversationEnvironment;
 
-  constructor(initial: Conversation, environment?: Partial<ConversationEnvironment>) {
+  constructor(
+    initial: Conversation = createConversation(),
+    environment?: Partial<ConversationEnvironment>,
+  ) {
     super();
     this.environment = resolveConversationEnvironment(environment);
     this.currentNode = {
@@ -317,6 +322,10 @@ export class ConversationHistory extends EventTarget {
     return toChatMessages(this.current);
   }
 
+  toMarkdown(options?: ToMarkdownOptions): string {
+    return toMarkdown(this.current, options);
+  }
+
   estimateTokens(estimator?: (message: Message) => number): number {
     return estimateConversationTokens(this.current, estimator, this.env);
   }
@@ -488,6 +497,17 @@ export class ConversationHistory extends EventTarget {
     h.currentNode = current;
 
     return history;
+  }
+
+  /**
+   * Creates a ConversationHistory instance from a Markdown string.
+   */
+  static fromMarkdown(
+    markdown: string,
+    environment?: Partial<ConversationEnvironment>,
+  ): ConversationHistory {
+    const conversation = fromMarkdown(markdown);
+    return new ConversationHistory(conversation, environment);
   }
 
   /**
