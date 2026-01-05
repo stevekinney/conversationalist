@@ -77,10 +77,13 @@ export {
 } from './errors';
 
 // Utilities
-export type { ToolCallPair } from './utilities';
+export type { ToMarkdownOptions, ToolCallPair } from './utilities';
 export {
+  fromMarkdown,
+  MarkdownParseError,
   normalizeContent,
   pairToolCallsWithResults,
+  toMarkdown,
   toMultiModalArray,
 } from './utilities';
 

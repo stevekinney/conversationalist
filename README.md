@@ -218,6 +218,108 @@ const boundTruncate = history.bind(truncateToTokenLimit);
 boundTruncate(4000); // Uses tiktokenEstimator automatically
 ```
 
+### Markdown Conversion
+
+Convert conversations to human-readable Markdown format, or parse Markdown back into a conversation object.
+
+#### Basic Usage (Clean Markdown)
+
+By default, `toMarkdown` produces clean, readable Markdown without metadata:
+
+```ts
+import {
+  toMarkdown,
+  fromMarkdown,
+  createConversation,
+  appendMessages,
+} from 'conversationalist';
+
+let conversation = createConversation({ id: 'conv-1' });
+conversation = appendMessages(
+  conversation,
+  { role: 'user', content: 'What is 2 + 2?' },
+  { role: 'assistant', content: 'The answer is 4.' },
+);
+
+const markdown = toMarkdown(conversation);
+// Output:
+// ### User
+//
+// What is 2 + 2?
+//
+// ### Assistant
+//
+// The answer is 4.
+```
+
+When parsing simple Markdown without metadata, `fromMarkdown` generates new IDs and uses sensible defaults:
+
+```ts
+const parsed = fromMarkdown(markdown);
+// parsed.id is a new generated ID
+// parsed.status is 'active'
+// Message IDs are generated, positions are assigned sequentially
+```
+
+#### Lossless Round-Trip (with Metadata)
+
+For archiving or backup scenarios where you need to preserve all data, use `{ includeMetadata: true }`:
+
+```ts
+const markdown = toMarkdown(conversation, { includeMetadata: true });
+// Output includes YAML frontmatter with all metadata keyed by message ID:
+// ---
+// id: conv-1
+// status: active
+// metadata: {}
+// tags: []
+// createdAt: '2024-01-15T10:00:00.000Z'
+// updatedAt: '2024-01-15T10:01:00.000Z'
+// messages:
+//   msg-1:
+//     position: 0
+//     createdAt: '2024-01-15T10:00:00.000Z'
+//     metadata: {}
+//     hidden: false
+//   msg-2:
+//     position: 1
+//     createdAt: '2024-01-15T10:01:00.000Z'
+//     metadata: {}
+//     hidden: false
+// ---
+// ### User (msg-1)
+//
+// What is 2 + 2?
+//
+// ### Assistant (msg-2)
+//
+// The answer is 4.
+
+// Parse back with all metadata preserved
+const restored = fromMarkdown(markdown);
+// restored.id === 'conv-1'
+// restored.messages[0].id === 'msg-1'
+```
+
+#### Multi-Modal Content
+
+Both functions handle multi-modal content. Images render as Markdown images, and with metadata enabled, additional properties like `mimeType` are preserved in the YAML frontmatter:
+
+```ts
+conversation = appendMessages(conversation, {
+  role: 'user',
+  content: [
+    { type: 'text', text: 'Describe this:' },
+    { type: 'image', url: 'https://example.com/photo.png', mimeType: 'image/png' },
+  ],
+});
+
+const md = toMarkdown(conversation);
+// Describe this:
+//
+// ![image](https://example.com/photo.png)
+```
+
 ## Plugins
 
 **Conversationalist** supports a plugin system that allows you to transform messages as they are appended to a conversation. Plugins are functions that take a `MessageInput` and return a modified `MessageInput`.
@@ -688,6 +790,7 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 | **Modification** | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                              |
 | **Context**      | `truncateToTokenLimit`, `getRecentMessages`, `estimateConversationTokens`                                |
 | **Querying**     | `getConversationMessages`, `getMessageByIdentifier`, `computeConversationStatistics`                     |
+| **Conversion**   | `toMarkdown`, `fromMarkdown`, `toChatMessages`, `pairToolCallsWithResults`                               |
 | **History**      | `ConversationHistory`, `bindToConversationHistory`                                                       |
 
 ## Deterministic Environments (Testing)

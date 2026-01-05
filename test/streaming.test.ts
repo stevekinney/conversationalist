@@ -21,7 +21,12 @@ const testEnvironment = {
 describe('appendStreamingMessage', () => {
   it('creates a new streaming message', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
     expect(messageId).toMatch(/^test-id-\d+$/);
     expect(conversation.messages).toHaveLength(1);
@@ -31,7 +36,12 @@ describe('appendStreamingMessage', () => {
 
   it('marks message as streaming via metadata', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
     expect(isStreamingMessage(conversation.messages[0]!)).toBe(true);
   });
@@ -52,17 +62,37 @@ describe('appendStreamingMessage', () => {
 describe('updateStreamingMessage', () => {
   it('updates message content', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
-    const updated = updateStreamingMessage(conversation, messageId, 'Hello', testEnvironment);
+    const updated = updateStreamingMessage(
+      conversation,
+      messageId,
+      'Hello',
+      testEnvironment,
+    );
     expect(updated.messages[0]?.content).toBe('Hello');
   });
 
   it('replaces content on each update (for accumulation)', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
-    let updated = updateStreamingMessage(conversation, messageId, 'Hello', testEnvironment);
+    let updated = updateStreamingMessage(
+      conversation,
+      messageId,
+      'Hello',
+      testEnvironment,
+    );
     updated = updateStreamingMessage(updated, messageId, 'Hello world', testEnvironment);
 
     expect(updated.messages[0]?.content).toBe('Hello world');
@@ -70,15 +100,30 @@ describe('updateStreamingMessage', () => {
 
   it('returns unchanged conversation for unknown message ID', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
-    const updated = updateStreamingMessage(conversation, 'unknown-id', 'Content', testEnvironment);
+    const updated = updateStreamingMessage(
+      conversation,
+      'unknown-id',
+      'Content',
+      testEnvironment,
+    );
     expect(updated).toBe(conversation);
   });
 
   it('supports multi-modal content updates', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
     const updated = updateStreamingMessage(
       conversation,
@@ -94,15 +139,30 @@ describe('updateStreamingMessage', () => {
 describe('finalizeStreamingMessage', () => {
   it('removes the streaming flag', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
-    const finalized = finalizeStreamingMessage(conversation, messageId, undefined, testEnvironment);
+    const finalized = finalizeStreamingMessage(
+      conversation,
+      messageId,
+      undefined,
+      testEnvironment,
+    );
     expect(isStreamingMessage(finalized.messages[0]!)).toBe(false);
   });
 
   it('adds token usage when provided', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
     const finalized = finalizeStreamingMessage(
       conversation,
@@ -111,7 +171,11 @@ describe('finalizeStreamingMessage', () => {
       testEnvironment,
     );
 
-    expect(finalized.messages[0]?.tokenUsage).toEqual({ prompt: 10, completion: 20, total: 30 });
+    expect(finalized.messages[0]?.tokenUsage).toEqual({
+      prompt: 10,
+      completion: 20,
+      total: 30,
+    });
   });
 
   it('merges additional metadata', () => {
@@ -136,9 +200,19 @@ describe('finalizeStreamingMessage', () => {
 
   it('returns unchanged conversation for unknown message ID', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
-    const finalized = finalizeStreamingMessage(conversation, 'unknown-id', undefined, testEnvironment);
+    const finalized = finalizeStreamingMessage(
+      conversation,
+      'unknown-id',
+      undefined,
+      testEnvironment,
+    );
     expect(finalized).toBe(conversation);
   });
 });
@@ -146,7 +220,12 @@ describe('finalizeStreamingMessage', () => {
 describe('cancelStreamingMessage', () => {
   it('removes the streaming message', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
     const cancelled = cancelStreamingMessage(conversation, messageId, testEnvironment);
     expect(cancelled.messages).toHaveLength(0);
@@ -157,10 +236,19 @@ describe('cancelStreamingMessage', () => {
     let conv = createConversation({ id: 'test' }, testEnvironment);
     conv = appendMessages(conv, { role: 'user', content: 'Hello' }, testEnvironment);
 
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
     // Add another message after the streaming one
-    const withMore = appendMessages(conversation, { role: 'user', content: 'Another' }, testEnvironment);
+    const withMore = appendMessages(
+      conversation,
+      { role: 'user', content: 'Another' },
+      testEnvironment,
+    );
 
     // Cancel the streaming message
     const cancelled = cancelStreamingMessage(withMore, messageId, testEnvironment);
@@ -173,7 +261,12 @@ describe('cancelStreamingMessage', () => {
 
   it('returns unchanged conversation for unknown message ID', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
     const cancelled = cancelStreamingMessage(conversation, 'unknown-id', testEnvironment);
     expect(cancelled).toBe(conversation);
@@ -183,7 +276,12 @@ describe('cancelStreamingMessage', () => {
 describe('isStreamingMessage', () => {
   it('returns true for streaming messages', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
     expect(isStreamingMessage(conversation.messages[0]!)).toBe(true);
   });
@@ -198,8 +296,18 @@ describe('isStreamingMessage', () => {
 
   it('returns false for finalized streaming messages', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
-    const finalized = finalizeStreamingMessage(conversation, messageId, undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
+    const finalized = finalizeStreamingMessage(
+      conversation,
+      messageId,
+      undefined,
+      testEnvironment,
+    );
 
     expect(isStreamingMessage(finalized.messages[0]!)).toBe(false);
   });
@@ -208,7 +316,12 @@ describe('isStreamingMessage', () => {
 describe('getStreamingMessage', () => {
   it('returns the streaming message if one exists', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
 
     const streaming = getStreamingMessage(conversation);
     expect(streaming?.id).toBe(messageId);
@@ -225,8 +338,18 @@ describe('getStreamingMessage', () => {
 
   it('returns undefined after message is finalized', () => {
     const conv = createConversation({ id: 'test' }, testEnvironment);
-    const { conversation, messageId } = appendStreamingMessage(conv, 'assistant', undefined, testEnvironment);
-    const finalized = finalizeStreamingMessage(conversation, messageId, undefined, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
+    const finalized = finalizeStreamingMessage(
+      conversation,
+      messageId,
+      undefined,
+      testEnvironment,
+    );
 
     const streaming = getStreamingMessage(finalized);
     expect(streaming).toBeUndefined();

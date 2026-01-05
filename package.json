@@ -81,7 +81,8 @@
     ]
   },
   "dependencies": {
-    "change-case": "^5.4.4"
+    "change-case": "^5.4.4",
+    "gray-matter": "^4.0.3"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

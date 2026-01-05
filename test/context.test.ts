@@ -123,7 +123,12 @@ describe('truncateFromPosition', () => {
       testEnvironment,
     );
 
-    const truncated = truncateFromPosition(conv, 2, { preserveSystemMessages: false }, testEnvironment);
+    const truncated = truncateFromPosition(
+      conv,
+      2,
+      { preserveSystemMessages: false },
+      testEnvironment,
+    );
     expect(truncated.messages.every((m) => m.role !== 'system')).toBe(true);
   });
 
@@ -178,7 +183,11 @@ describe('estimateConversationTokens', () => {
 
   it('uses estimator from environment when only environment is provided', () => {
     let conv = createConversation({ id: 'test' }, testEnvironment);
-    conv = appendMessages(conv, { role: 'user', content: 'Hello world' }, testEnvironment);
+    conv = appendMessages(
+      conv,
+      { role: 'user', content: 'Hello world' },
+      testEnvironment,
+    );
 
     const tokens = estimateConversationTokens(conv, testEnvironment);
     expect(tokens).toBe(3); // 'Hello world' is 11 chars -> 3 tokens
@@ -216,7 +225,12 @@ describe('truncateToTokenLimit', () => {
     let conv = createConversation({ id: 'test' }, testEnvironment);
     conv = appendMessages(conv, { role: 'user', content: 'Hi' }, testEnvironment);
 
-    const truncated = truncateToTokenLimit(conv, 1000, { estimateTokens: simpleTokenEstimator }, testEnvironment);
+    const truncated = truncateToTokenLimit(
+      conv,
+      1000,
+      { estimateTokens: simpleTokenEstimator },
+      testEnvironment,
+    );
     expect(truncated.messages).toHaveLength(conv.messages.length);
   });
 
@@ -232,7 +246,12 @@ describe('truncateToTokenLimit', () => {
     );
 
     // Set a low token limit that can't fit all messages
-    const truncated = truncateToTokenLimit(conv, 10, { estimateTokens: simpleTokenEstimator }, testEnvironment);
+    const truncated = truncateToTokenLimit(
+      conv,
+      10,
+      { estimateTokens: simpleTokenEstimator },
+      testEnvironment,
+    );
     expect(truncated.messages.length).toBeLessThan(conv.messages.length);
   });
 
@@ -246,7 +265,12 @@ describe('truncateToTokenLimit', () => {
       testEnvironment,
     );
 
-    const truncated = truncateToTokenLimit(conv, 5, { estimateTokens: simpleTokenEstimator }, testEnvironment);
+    const truncated = truncateToTokenLimit(
+      conv,
+      5,
+      { estimateTokens: simpleTokenEstimator },
+      testEnvironment,
+    );
     expect(truncated.messages.some((m) => m.role === 'system')).toBe(true);
   });
 
@@ -465,11 +489,7 @@ describe('truncateToTokenLimit', () => {
     // Every message is 100 tokens. 100 > 10, so it should truncate.
     const estimator = () => 100;
 
-    const truncated = truncateToTokenLimit(
-      conv,
-      10,
-      { estimateTokens: estimator },
-    );
+    const truncated = truncateToTokenLimit(conv, 10, { estimateTokens: estimator });
 
     // If it's correctly identified as options, it should truncate.
     // If it's incorrectly identified as environment, it will use the default estimator (character count / 4),
