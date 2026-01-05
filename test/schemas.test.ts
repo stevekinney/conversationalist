@@ -4,9 +4,13 @@ import { z } from 'zod';
 import {
   conversationSchema,
   conversationShape,
+  messageInputSchema,
   messageJSONSchema,
   messageRoleSchema,
   multiModalContentSchema,
+  tokenUsageSchema,
+  toolCallSchema,
+  toolResultSchema,
 } from '../src/schemas';
 import { CURRENT_SCHEMA_VERSION } from '../src/types';
 
@@ -146,5 +150,51 @@ describe('schemas', () => {
     if (result.success) {
       expect(result.data.id).toBe('original-id');
     }
+  });
+});
+
+describe('Standard Schema compliance', () => {
+  test('all schemas have ~standard property', () => {
+    const schemas = [
+      conversationSchema,
+      messageJSONSchema,
+      messageInputSchema,
+      messageRoleSchema,
+      multiModalContentSchema,
+      toolCallSchema,
+      toolResultSchema,
+      tokenUsageSchema,
+    ];
+
+    for (const schema of schemas) {
+      expect(schema).toHaveProperty('~standard');
+      expect(schema['~standard']).toHaveProperty('version', 1);
+      expect(schema['~standard']).toHaveProperty('vendor', 'zod');
+      expect(typeof schema['~standard'].validate).toBe('function');
+    }
+  });
+
+  test('~standard.validate returns success result for valid data', () => {
+    const validConversation = {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      id: 'conv-1',
+      status: 'active',
+      metadata: {},
+      tags: [],
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const result = conversationSchema['~standard'].validate(validConversation);
+    expect(result).not.toHaveProperty('issues');
+    expect(result).toHaveProperty('value');
+  });
+
+  test('~standard.validate returns failure result for invalid data', () => {
+    const invalidData = { invalid: true };
+    const result = conversationSchema['~standard'].validate(invalidData);
+    expect(result).toHaveProperty('issues');
+    expect(Array.isArray(result.issues)).toBe(true);
   });
 });

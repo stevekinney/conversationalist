@@ -919,6 +919,53 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 | **Deterministic** | `sortObjectKeys`, `sortMessagesByPosition`                                                               |
 | **History**       | `ConversationHistory`, `bindToConversationHistory`                                                       |
 
+## Standard Schema Compliance
+
+All exported Zod schemas implement the [Standard Schema](https://standardschema.dev/) specification via Zod's built-in support. This means they can be used with any Standard Schema-compatible tool without library-specific adapters.
+
+### Exported Schemas
+
+| Schema                    | Purpose                             |
+| :------------------------ | :---------------------------------- |
+| `conversationSchema`      | Complete conversation with metadata |
+| `messageJSONSchema`       | Serialized message format           |
+| `messageInputSchema`      | Input for creating messages         |
+| `messageRoleSchema`       | Valid message roles enum            |
+| `multiModalContentSchema` | Text or image content               |
+| `toolCallSchema`          | Tool function calls                 |
+| `toolResultSchema`        | Tool execution results              |
+| `tokenUsageSchema`        | Token usage statistics              |
+
+### Usage with Standard Schema Consumers
+
+```ts
+import { conversationSchema } from 'conversationalist';
+
+// Access the Standard Schema interface
+const standardSchema = conversationSchema['~standard'];
+
+// Use with any Standard Schema consumer
+const result = standardSchema.validate(unknownData);
+if (result.issues) {
+  console.error('Validation failed:', result.issues);
+} else {
+  console.log('Valid conversation:', result.value);
+}
+```
+
+### Type Inference
+
+Standard Schema preserves type information:
+
+```ts
+import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { conversationSchema } from 'conversationalist';
+
+// Type is inferred correctly
+type ConversationInput = StandardSchemaV1.InferInput<typeof conversationSchema>;
+type ConversationOutput = StandardSchemaV1.InferOutput<typeof conversationSchema>;
+```
+
 ## Deterministic Environments (Testing)
 
 Pass a custom environment to control timestamps and IDs, making your tests 100% predictable.
