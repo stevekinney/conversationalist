@@ -16,7 +16,6 @@ export type {
   Message,
   MessageInput,
   MessageRole,
-  SerializeOptions,
   TokenUsage,
   ToMarkdownOptions,
   ToolCall,
@@ -59,7 +58,6 @@ export {
   redactMessageAtPosition,
   replaceSystemMessage,
   searchConversationMessages,
-  serializeConversation,
   toChatMessages,
 } from './conversation';
 export { withEnvironment } from './environment';

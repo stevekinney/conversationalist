@@ -16,7 +16,6 @@ export function createConversation(
     title?: string;
     status?: ConversationStatus;
     metadata?: Record<string, JSONValue>;
-    tags?: string[];
   },
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
@@ -28,7 +27,6 @@ export function createConversation(
     title: options?.title,
     status: options?.status ?? 'active',
     metadata: { ...(options?.metadata ?? {}) },
-    tags: [...(options?.tags ?? [])],
     ids: [],
     messages: {},
     createdAt: now,

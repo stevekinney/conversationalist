@@ -13,7 +13,7 @@ In a modern AI application, a conversation is more than just a list of strings. 
 
 - **Tool Use**: Pairing function calls with their results and ensuring they stay in sync.
 - **Hidden Logic**: Internal "thought" messages or snapshots that should be saved but never sent to the provider.
-- **Metadata**: Tracking tags, custom IDs, and tokens across different steps.
+- **Metadata**: Tracking custom IDs and tokens across different steps.
 - **Streaming**: Gracefully handling partial messages in a UI without messy state transitions.
 
 Conversationalist handles these complexities through a robust, type-safe API that treats your conversation as the "Single Source of Truth."
@@ -65,7 +65,6 @@ import {
   appendAssistantMessage,
   appendUserMessage,
   createConversation,
-  serializeConversation,
 } from 'conversationalist';
 import { toOpenAIMessages } from 'conversationalist/openai';
 
@@ -82,17 +81,13 @@ conversation = appendAssistantMessage(conversation, 'Let me check that for you.'
 // 3. Adapt for a provider
 const openAIMessages = toOpenAIMessages(conversation);
 // [{ role: 'user', content: 'Where is my order?' }, ...]
-
-// 4. Save to your database
-const data = serializeConversation(conversation);
-// db.save(data.id, JSON.stringify(data));
 ```
 
 ## Core Concepts
 
 ### Conversations
 
-A conversation is an immutable record with metadata, tags, timestamps, a `messages` record keyed
+A conversation is an immutable record with metadata, timestamps, a `messages` record keyed
 by message ID, and an `ids` array that preserves order.
 
 ```ts
@@ -102,7 +97,6 @@ const conversation = createConversation({
   title: 'My Chat',
   status: 'active',
   metadata: { customerId: 'cus_123' },
-  tags: ['support', 'vip'],
 });
 ```
 
@@ -276,7 +270,6 @@ const markdown = toMarkdown(conversation, { includeMetadata: true });
 // id: conv-1
 // status: active
 // metadata: {}
-// tags: []
 // createdAt: '2024-01-15T10:00:00.000Z'
 // updatedAt: '2024-01-15T10:01:00.000Z'
 // messages:
@@ -636,38 +629,8 @@ const migrated = migrateConversation(legacyData);
 const conversation = deserializeConversation(migrated);
 ```
 
-### Serialization Options
-
-`serializeConversation` accepts options for controlling the output. Conversations are already
-JSON-serializable; use this helper when you need redaction or transient stripping:
-
-```ts
-import { serializeConversation } from 'conversationalist';
-
-const json = serializeConversation(conversation, {
-  // Remove metadata keys starting with '_' (transient UI state)
-  stripTransient: true,
-
-  // Exclude hidden messages from export output
-  includeHidden: false,
-
-  // Replace hidden message content with a placeholder
-  redactHiddenContent: true,
-
-  // Placeholder used when redacting tool or hidden content
-  redactedPlaceholder: '[REDACTED]',
-
-  // Replace tool arguments with '[REDACTED]'
-  redactToolArguments: true,
-
-  // Replace tool result content with '[REDACTED]'
-  redactToolResults: true,
-});
-
-These options line up with the markdown export options where applicable (`toMarkdown`
-and `exportMarkdown`). Conversation output is already deterministic thanks to immutable
-state and ordered `ids`.
-```
+Conversations are already JSON-serializable; persist them directly and apply utilities
+like `stripTransientMetadata` or `redactMessageAtPosition` when you need to sanitize data.
 
 ### Transient Metadata Convention
 
@@ -951,7 +914,7 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 
 | Category         | Key Functions                                                                                                                                                                                                                   |
 | :--------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Creation**     | `createConversation`, `serializeConversation`, `deserializeConversation`                                                                                                                                                        |
+| **Creation**     | `createConversation`, `deserializeConversation`                                                                                                                                                                                 |
 | **Appending**    | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendMessages`                                                                                                                                          |
 | **Streaming**    | `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage`                                                                                                                        |
 | **Modification** | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                                                                                                                                                     |

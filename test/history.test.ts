@@ -149,7 +149,7 @@ describe('ConversationHistory', () => {
           messages: [],
           createdAt: '2024-01-01T00:00:00.000Z',
           updatedAt: '2024-01-01T00:00:00.000Z',
-          // missing status, metadata, tags
+          // missing status, metadata
         }) as any,
     );
 
@@ -166,7 +166,6 @@ describe('ConversationHistory', () => {
           id: 'null-metadata',
           status: 'active',
           metadata: null,
-          tags: [],
           messages: [],
           createdAt: '2024-01-01T00:00:00.000Z',
           updatedAt: '2024-01-01T00:00:00.000Z',
@@ -247,7 +246,7 @@ describe('ConversationHistory', () => {
       expect(history.getMessages()).toHaveLength(1);
       expect(history.getMessageAtPosition(0)?.content).toBe('Hello');
       expect(history.getStatistics().total).toBe(1);
-      expect(history.serialize().title).toBe('Query');
+      expect(history.current.title).toBe('Query');
       expect(history.toChatMessages()).toHaveLength(1);
       expect(historyToMarkdown(history)).toContain('### User');
       expect(historyToMarkdown(history, { includeMetadata: true })).toContain('---');

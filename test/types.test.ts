@@ -161,9 +161,6 @@ describe('conversationalist types Type Inference', () => {
         Readonly<Record<string, JSONValue>>
       >();
 
-      // Tags are readonly
-      expectTypeOf<Conversation['tags']>().toEqualTypeOf<ReadonlyArray<string>>();
-
       // Ids are readonly
       expectTypeOf<Conversation['ids']>().toEqualTypeOf<ReadonlyArray<string>>();
 
@@ -184,15 +181,14 @@ describe('conversationalist types Type Inference', () => {
         id: 'conv-1',
         status: 'active',
         metadata: {},
-        tags: ['test'],
         ids: [],
         messages: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
-      // @ts-expect-error - tags is readonly
-      conv.tags.push('another');
+      // @ts-expect-error - ids is readonly
+      conv.ids.push('msg-1');
 
       // @ts-expect-error - messages is readonly
       conv.messages['msg-1'] = {} as Message;

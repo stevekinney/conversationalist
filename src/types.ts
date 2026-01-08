@@ -109,7 +109,6 @@ export interface Conversation {
   title?: string | undefined;
   status: ConversationStatus;
   metadata: Readonly<Record<string, JSONValue>>;
-  tags: ReadonlyArray<string>;
   ids: ReadonlyArray<string>;
   messages: Readonly<Record<string, Message>>;
   createdAt: string;
@@ -195,9 +194,3 @@ export interface ToMarkdownOptions extends ExportOptions {
    */
   includeMetadata?: boolean;
 }
-
-/**
- * Options for cloning/exporting conversations with redaction or metadata stripping.
- * Alias for ExportOptions for API consistency.
- */
-export type SerializeOptions = ExportOptions;

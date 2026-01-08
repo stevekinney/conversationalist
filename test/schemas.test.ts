@@ -50,7 +50,6 @@ describe('schemas', () => {
       id: 'c1',
       status: 'active',
       metadata: {},
-      tags: [],
       ids: [],
       messages: {},
       createdAt: now,
@@ -71,7 +70,6 @@ describe('schemas', () => {
     expect(conversationShape).toHaveProperty('title');
     expect(conversationShape).toHaveProperty('status');
     expect(conversationShape).toHaveProperty('metadata');
-    expect(conversationShape).toHaveProperty('tags');
     expect(conversationShape).toHaveProperty('ids');
     expect(conversationShape).toHaveProperty('messages');
     expect(conversationShape).toHaveProperty('createdAt');
@@ -94,7 +92,6 @@ describe('schemas', () => {
       id: 'test-id',
       status: 'active' as const,
       metadata: {},
-      tags: ['test'],
       ids: [],
       messages: {},
       createdAt: now,
@@ -115,7 +112,6 @@ describe('schemas', () => {
     expect('title' in schemaShape).toBe(true);
     expect('status' in schemaShape).toBe(true);
     expect('metadata' in schemaShape).toBe(true);
-    expect('tags' in schemaShape).toBe(true);
     expect('ids' in schemaShape).toBe(true);
     expect('messages' in schemaShape).toBe(true);
     expect('createdAt' in schemaShape).toBe(true);
@@ -144,7 +140,6 @@ describe('schemas', () => {
       type: 'conversation',
       status: 'active' as const,
       metadata: {},
-      tags: [],
       ids: [],
       messages: {},
       createdAt: now,
@@ -187,7 +182,6 @@ describe('Standard Schema compliance', () => {
       id: 'conv-1',
       status: 'active',
       metadata: {},
-      tags: [],
       ids: [],
       messages: {},
       createdAt: new Date().toISOString(),

@@ -754,7 +754,6 @@ describe('Gemini Adapter', () => {
         id: 'test',
         status: 'active',
         metadata: {},
-        tags: [],
         ids: [message.id],
         messages: { [message.id]: message },
         createdAt: '2024-01-01T00:00:00.000Z',

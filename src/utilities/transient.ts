@@ -94,7 +94,6 @@ export function stripTransientMetadata(conversation: Conversation): Conversation
     title: conversation.title,
     status: conversation.status,
     metadata: toReadonly(stripTransientFromRecord({ ...conversation.metadata })),
-    tags: conversation.tags,
     ids: strippedMessages.map((message) => message.id),
     messages: toIdRecord(strippedMessages),
     createdAt: conversation.createdAt,

@@ -155,7 +155,6 @@ export const conversationShape = {
   title: z.string().optional(),
   status: conversationStatusSchema,
   metadata: z.record(z.string(), jsonValueSchema),
-  tags: z.array(z.string()),
   ids: z.array(z.string()),
   messages: z.record(z.string(), messageJSONSchema),
   createdAt: z.string(),

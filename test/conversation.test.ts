@@ -20,7 +20,6 @@ import {
   redactMessageAtPosition,
   replaceSystemMessage,
   searchConversationMessages,
-  serializeConversation,
   toChatMessages,
 } from '../src/conversation';
 import { ConversationalistError } from '../src/errors';
@@ -118,7 +117,6 @@ describe('conversation (functional)', () => {
       id: 'c',
       status: 'active' as const,
       metadata: {},
-      tags: [],
       messages: [
         {
           id: 'm1',
@@ -140,7 +138,6 @@ describe('conversation (functional)', () => {
       id: 'c2',
       status: 'active' as const,
       metadata: {},
-      tags: [],
       messages: [
         {
           id: 't',
@@ -159,18 +156,15 @@ describe('conversation (functional)', () => {
     expect(() => deserializeConversation(badTool as any)).toThrow(ConversationalistError);
   });
 
-  test('serialize/deserialize round trip with metadata and tags', () => {
+  test('deserialize handles conversation input with metadata', () => {
     let c = createConversation({
       title: 'T',
       status: 'active',
       metadata: { source: 'x' },
-      tags: ['a', 'b'],
     });
     c = appendUserMessage(c, 'hi', { foo: 1 });
-    const json = serializeConversation(c);
-    const restored = deserializeConversation(json);
+    const restored = deserializeConversation(c);
     expect(restored.title).toBe('T');
-    expect(restored.tags.length).toBe(2);
     expect(getOrderedMessages(restored)[0]!.metadata.foo).toBe(1);
     expect(restored.ids).toEqual(c.ids);
   });
@@ -234,8 +228,7 @@ describe('conversation (functional)', () => {
         toolResult: { callId: 'dc1', outcome: 'success', content: {} },
       },
     );
-    const json = serializeConversation(c);
-    const restored = deserializeConversation(json);
+    const restored = deserializeConversation(c);
     const restoredMessages = getOrderedMessages(restored);
     expect(restoredMessages.length).toBe(2);
     expect(restoredMessages[0]!.toolCall?.id).toBe('dc1');
@@ -619,7 +612,6 @@ describe('migrateConversation', () => {
       id: 'conv-1',
       status: 'active',
       metadata: {},
-      tags: [],
       messages: [],
       createdAt: '2024-01-15T10:00:00.000Z',
       updatedAt: '2024-01-15T10:00:00.000Z',
@@ -637,7 +629,6 @@ describe('migrateConversation', () => {
       id: 'conv-1',
       status: 'active',
       metadata: {},
-      tags: [],
       messages: [],
       createdAt: '2024-01-15T10:00:00.000Z',
       updatedAt: '2024-01-15T10:00:00.000Z',
@@ -646,172 +637,5 @@ describe('migrateConversation', () => {
     const result = migrateConversation(data);
     expect(result.schemaVersion).toBe(99);
     expect(result.ids).toEqual([]);
-  });
-});
-
-describe('serializeConversation options', () => {
-  test('stripTransient removes transient metadata from conversation', () => {
-    let c = createConversation();
-    c = {
-      ...c,
-      metadata: { _temp: 1, permanent: 'value' },
-    };
-
-    const result = serializeConversation(c, { stripTransient: true });
-    expect(result.metadata).toEqual({ permanent: 'value' });
-    expect(result.metadata).not.toHaveProperty('_temp');
-  });
-
-  test('stripTransient removes transient metadata from messages', () => {
-    let c = createConversation();
-    c = appendUserMessage(c, 'hello');
-    c = {
-      ...c,
-      messages: Object.fromEntries(
-        getOrderedMessages(c).map((m) => [
-          m.id,
-          {
-            ...m,
-            metadata: { ...m.metadata, _deliveryStatus: 'sent', source: 'web' },
-          },
-        ]),
-      ),
-    };
-
-    const result = serializeConversation(c, { stripTransient: true });
-    const firstId = result.ids[0]!;
-    expect(result.messages[firstId].metadata).toEqual({ source: 'web' });
-    expect(result.messages[firstId].metadata).not.toHaveProperty('_deliveryStatus');
-  });
-
-
-  test('redactToolArguments replaces tool arguments with [REDACTED]', () => {
-    let c = createConversation();
-    c = appendMessages(c, {
-      role: 'tool-use',
-      content: 'Calling search',
-      toolCall: { id: 'call-1', name: 'search', arguments: 'sensitive data' },
-    });
-
-    const result = serializeConversation(c, { redactToolArguments: true });
-    const firstId = result.ids[0]!;
-    expect(result.messages[firstId].toolCall?.arguments).toBe('[REDACTED]');
-  });
-
-  test('redactToolResults replaces tool result content with [REDACTED]', () => {
-    let c = createConversation();
-    c = appendMessages(
-      c,
-      {
-        role: 'tool-use',
-        content: 'Calling search',
-        toolCall: { id: 'call-1', name: 'search', arguments: '{}' },
-      },
-      {
-        role: 'tool-result',
-        content: 'Result returned',
-        toolResult: {
-          callId: 'call-1',
-          outcome: 'error',
-          content: 'sensitive result data',
-          toolCallId: 'call-1',
-          toolName: 'search',
-          result: { status: 'sensitive payload' },
-          error: 'sensitive error message',
-        },
-      },
-    );
-
-    const result = serializeConversation(c, { redactToolResults: true });
-    const toolResult = result.messages[result.ids[1]!].toolResult;
-    expect(toolResult?.content).toBe('[REDACTED]');
-    expect(toolResult?.result).toBe('[REDACTED]');
-    expect(toolResult?.error).toBe('[REDACTED]');
-    expect(toolResult?.toolCallId).toBe('call-1');
-    expect(toolResult?.toolName).toBe('search');
-  });
-
-  test('includeHidden can omit hidden messages', () => {
-    let c = createConversation();
-    c = appendMessages(
-      c,
-      { role: 'user', content: 'visible' },
-      { role: 'assistant', content: 'hidden', hidden: true },
-    );
-
-    const result = serializeConversation(c, { includeHidden: false });
-    expect(result.ids).toHaveLength(1);
-    expect(result.messages[result.ids[0]!].content).toBe('visible');
-  });
-
-  test('redactHiddenContent replaces hidden message content', () => {
-    let c = createConversation();
-    c = appendMessages(
-      c,
-      { role: 'user', content: 'visible' },
-      { role: 'assistant', content: 'secret', hidden: true },
-    );
-
-    const result = serializeConversation(c, {
-      redactHiddenContent: true,
-      redactedPlaceholder: '[HIDDEN]',
-    });
-
-    expect(result.messages[result.ids[0]!].content).toBe('visible');
-    expect(result.messages[result.ids[1]!].content).toBe('[HIDDEN]');
-  });
-
-  test('redactedPlaceholder applies to tool redaction', () => {
-    let c = createConversation();
-    c = appendMessages(c, {
-      role: 'tool-use',
-      content: 'Calling search',
-      toolCall: { id: 'call-1', name: 'search', arguments: 'sensitive data' },
-    });
-
-    const result = serializeConversation(c, {
-      redactToolArguments: true,
-      redactedPlaceholder: '[MASKED]',
-    });
-
-    expect(result.messages[result.ids[0]!].toolCall?.arguments).toBe('[MASKED]');
-  });
-
-  test('all options can be combined', () => {
-    let c = createConversation();
-    c = {
-      ...c,
-      metadata: { _temp: 1, z: 2, a: 3 },
-    };
-    c = appendMessages(
-      c,
-      {
-        role: 'tool-use',
-        content: 'Calling func',
-        metadata: { _tempMeta: 'x' },
-        toolCall: { id: 'call-1', name: 'func', arguments: 'args' },
-      },
-      {
-        role: 'tool-result',
-        content: 'Result',
-        toolResult: { callId: 'call-1', content: 'result' },
-      },
-    );
-
-    const result = serializeConversation(c, {
-      stripTransient: true,
-      redactToolArguments: true,
-      redactToolResults: true,
-      includeHidden: true,
-      redactHiddenContent: true,
-    });
-
-    // Check transient stripped
-    expect(result.metadata).not.toHaveProperty('_temp');
-    expect(result.messages[result.ids[0]!].metadata).not.toHaveProperty('_tempMeta');
-
-    // Check redaction
-    expect(result.messages[result.ids[0]!].toolCall?.arguments).toBe('[REDACTED]');
-    expect(result.messages[result.ids[1]!].toolResult?.content).toBe('[REDACTED]');
   });
 });

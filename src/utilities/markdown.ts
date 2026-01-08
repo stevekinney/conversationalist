@@ -196,7 +196,6 @@ function prepareConversationForMarkdown(
     title: conversation.title,
     status: conversation.status,
     metadata: toReadonly(metadata),
-    tags: toReadonly([...conversation.tags]),
     ids: toReadonly(messages.map((message) => message.id)),
     messages: toReadonly(toIdRecord(messages)),
     createdAt: conversation.createdAt,
@@ -252,7 +251,6 @@ interface ConversationFrontmatter {
   title?: string;
   status: ConversationStatus;
   metadata: Record<string, JSONValue>;
-  tags: string[];
   createdAt: string;
   updatedAt: string;
   messages: Record<string, MessageFrontmatter>;
@@ -353,7 +351,6 @@ function toMarkdownWithMetadata(
     id: conversation.id,
     status: conversation.status,
     metadata: { ...conversation.metadata },
-    tags: [...conversation.tags],
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
     messages: messagesMetadata,
@@ -415,7 +412,7 @@ function generateId(): string {
  * - Conversation ID and timestamps are generated
  * - Message IDs are generated, positions are inferred from order
  * - Content is parsed from markdown body
- * - Defaults: status='active', hidden=false, empty metadata/tags
+ * - Defaults: status='active', hidden=false, empty metadata
  *
  * @param markdown - The markdown string to parse
  * @returns A Conversation object
@@ -516,7 +513,6 @@ function parseMarkdownWithMetadata(trimmed: string): Conversation {
     title: frontmatter.title,
     status: frontmatter.status ?? 'active',
     metadata: toReadonly({ ...frontmatter.metadata }),
-    tags: toReadonly([...(frontmatter.tags ?? [])]),
     ids: toReadonly(messages.map((message) => message.id)),
     messages: toReadonly(toIdRecord(messages)),
     createdAt: frontmatter.createdAt,
@@ -566,7 +562,6 @@ function parseMarkdownSimple(body: string): Conversation {
     id: generateId(),
     status: 'active',
     metadata: toReadonly({}),
-    tags: toReadonly([]),
     ids: toReadonly(messages.map((message) => message.id)),
     messages: toReadonly(toIdRecord(messages)),
     createdAt: now,

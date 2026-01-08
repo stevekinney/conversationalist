@@ -25,7 +25,6 @@ import {
   redactMessageAtPosition,
   replaceSystemMessage,
   searchConversationMessages,
-  serializeConversation,
   toChatMessages,
 } from './conversation';
 import {
@@ -361,13 +360,6 @@ export class ConversationHistory extends EventTarget {
   }
 
   /**
-   * Serializes the current conversation.
-   */
-  serialize() {
-    return serializeConversation(this.current);
-  }
-
-  /**
    * Converts the current conversation to external chat message format.
    */
   toChatMessages() {
@@ -535,7 +527,7 @@ export class ConversationHistory extends EventTarget {
     };
 
     const serializeNode = (node: HistoryNode): HistoryNodeSnapshot => ({
-      conversation: serializeConversation(node.conversation),
+      conversation: node.conversation,
       children: node.children.map(serializeNode),
     });
 
@@ -655,7 +647,6 @@ function isConversation(value: unknown): value is Conversation {
     typeof (value as Conversation).status === 'string' &&
     (value as Conversation).metadata !== null &&
     typeof (value as Conversation).metadata === 'object' &&
-    Array.isArray((value as Conversation).tags) &&
     Array.isArray((value as Conversation).ids) &&
     typeof (value as Conversation).messages === 'object' &&
     (value as Conversation).messages !== null &&

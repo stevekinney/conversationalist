@@ -1,15 +1,9 @@
 import { createInvalidPositionError, createSerializationError } from '../errors';
-import { copyContent } from '../multi-modal';
-import type { AssistantMessage, Conversation, Message, SerializeOptions } from '../types';
+import type { Conversation, Message } from '../types';
 import { CURRENT_SCHEMA_VERSION } from '../types';
-import { createMessage, isAssistantMessage, toReadonly } from '../utilities';
-import { getOrderedMessages, toIdRecord } from '../utilities/message-store';
-import { copyToolResult, redactToolResult } from '../utilities/tool-results';
-import { stripTransientFromRecord } from '../utilities/transient';
+import { createMessage, toReadonly } from '../utilities';
+import { toIdRecord } from '../utilities/message-store';
 import { assertToolReference, registerToolUse, type ToolUseIndex } from './tool-tracking';
-
-/** Placeholder used when redacting sensitive data */
-const DEFAULT_REDACTED_PLACEHOLDER = '[REDACTED]';
 
 /**
  * Migrates a serialized conversation object to the current schema version.
@@ -34,7 +28,6 @@ export function migrateConversation(json: unknown): Conversation {
       id: '',
       status: 'active',
       metadata: {},
-      tags: [],
       ids: [],
       messages: {},
       createdAt: new Date().toISOString(),
@@ -94,110 +87,6 @@ export function migrateConversation(json: unknown): Conversation {
 }
 
 /**
- * Produces a sanitized clone of a conversation with optional redaction and metadata stripping.
- * Conversations are already JSON-serializable; this helper makes export-safe copies.
- *
- * @param conversation - The conversation to serialize
- * @param options - Serialization options
- * @returns A JSON-serializable conversation object
- *
- * @example
- * ```ts
- * // Basic serialization
- * const json = serializeConversation(conversation);
- *
- * // With options
- * const json = serializeConversation(conversation, {
- *   stripTransient: true,
- *   redactToolArguments: true,
- * });
- * ```
- */
-export function serializeConversation(
-  conversation: Conversation,
-  options: SerializeOptions = {},
-): Conversation {
-  const {
-    stripTransient = false,
-    includeHidden = true,
-    redactHiddenContent = false,
-    redactedPlaceholder = DEFAULT_REDACTED_PLACEHOLDER,
-    redactToolArguments = false,
-    redactToolResults = false,
-  } = options;
-
-  // Process conversation metadata
-  let metadata = { ...conversation.metadata };
-  if (stripTransient) {
-    metadata = stripTransientFromRecord(metadata);
-  }
-
-  // Process messages in order
-  const messages: Message[] = getOrderedMessages(conversation)
-    .filter((message) => includeHidden || !message.hidden)
-    .map((m) => {
-      let msgMetadata = { ...m.metadata };
-      if (stripTransient) {
-        msgMetadata = stripTransientFromRecord(msgMetadata);
-      }
-
-      const content =
-        redactHiddenContent && m.hidden ? redactedPlaceholder : copyContent(m.content);
-
-      const baseMessage = {
-        id: m.id,
-        role: m.role,
-        content,
-        position: m.position,
-        createdAt: m.createdAt,
-        metadata: msgMetadata,
-        hidden: m.hidden,
-        toolCall: m.toolCall
-          ? {
-              ...m.toolCall,
-              arguments: redactToolArguments ? redactedPlaceholder : m.toolCall.arguments,
-            }
-          : undefined,
-        toolResult: m.toolResult
-          ? redactToolResults
-            ? redactToolResult(m.toolResult, redactedPlaceholder)
-            : copyToolResult(m.toolResult)
-          : undefined,
-        tokenUsage: m.tokenUsage ? { ...m.tokenUsage } : undefined,
-      };
-
-      if (isAssistantMessage(m)) {
-        const assistantMessage: AssistantMessage = {
-          ...baseMessage,
-          role: 'assistant',
-          goalCompleted: m.goalCompleted,
-        };
-        return assistantMessage;
-      }
-
-      return baseMessage;
-    });
-
-  const ids = messages.map((message) => message.id);
-  const messageRecord = toIdRecord(messages);
-
-  const result: Conversation = {
-    schemaVersion: conversation.schemaVersion,
-    id: conversation.id,
-    title: conversation.title,
-    status: conversation.status,
-    metadata,
-    tags: [...conversation.tags],
-    ids,
-    messages: messageRecord,
-    createdAt: conversation.createdAt,
-    updatedAt: conversation.updatedAt,
-  };
-
-  return result;
-}
-
-/**
  * Reconstructs a conversation from a JSON object.
  * Automatically migrates data from older schema versions.
  * Validates message positions are contiguous and tool results reference valid calls.
@@ -247,7 +136,6 @@ export function deserializeConversation(json: unknown): Conversation {
       title: migrated.title,
       status: migrated.status,
       metadata: { ...migrated.metadata },
-      tags: [...migrated.tags],
       ids: orderedMessages.map((message) => message.id),
       messages: toIdRecord(messageInstances),
       createdAt: migrated.createdAt,

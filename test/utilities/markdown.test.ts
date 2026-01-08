@@ -49,7 +49,6 @@ describe('toMarkdown', () => {
       id: 'conv-1',
       status: 'active',
       metadata: {},
-      tags: [],
       createdAt: '2024-01-15T10:00:00.000Z',
       updatedAt: '2024-01-15T10:00:00.000Z',
       ...rest,
@@ -237,7 +236,6 @@ describe('toMarkdown', () => {
         title: 'Test Conversation',
         status: 'archived',
         metadata: { key: 'value' },
-        tags: ['tag1', 'tag2'],
         createdAt: '2024-01-15T10:00:00.000Z',
         updatedAt: '2024-01-15T10:30:00.000Z',
       });
@@ -249,8 +247,6 @@ describe('toMarkdown', () => {
       expect(result).toContain('title: Test Conversation');
       expect(result).toContain('status: archived');
       expect(result).toContain('key: value');
-      expect(result).toContain('- tag1');
-      expect(result).toContain('- tag2');
     });
 
     test('excludes title from frontmatter when undefined', () => {
@@ -529,7 +525,6 @@ describe('fromMarkdown', () => {
       expect(getOrderedMessages(conversation)).toHaveLength(0);
       expect(conversation.status).toBe('active');
       expect(conversation.metadata).toEqual({});
-      expect(conversation.tags).toEqual([]);
     });
 
     test('parses simple message without frontmatter', () => {
@@ -637,11 +632,10 @@ Content`;
     });
 
     test('throws MarkdownParseError for unknown role', () => {
-      const markdown = `---
+const markdown = `---
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages:
@@ -661,11 +655,10 @@ Content`;
     });
 
     test('throws MarkdownParseError when message metadata is missing', () => {
-      const markdown = `---
+const markdown = `---
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages: {}
@@ -680,11 +673,10 @@ Content`;
     });
 
     test('parses conversation with no messages', () => {
-      const markdown = `---
+const markdown = `---
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages: {}
@@ -697,12 +689,11 @@ messages: {}
     });
 
     test('parses conversation with title', () => {
-      const markdown = `---
+const markdown = `---
 id: conv-1
 title: My Conversation
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages: {}
@@ -712,16 +703,13 @@ messages: {}
       expect(conversation.title).toBe('My Conversation');
     });
 
-    test('parses conversation metadata and tags', () => {
+    test('parses conversation metadata', () => {
       const markdown = `---
 id: conv-1
 status: active
 metadata:
   key: value
   count: 42
-tags:
-  - tag1
-  - tag2
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages: {}
@@ -729,15 +717,13 @@ messages: {}
 
       const conversation = fromMarkdown(markdown);
       expect(conversation.metadata).toEqual({ key: 'value', count: 42 });
-      expect(conversation.tags).toEqual(['tag1', 'tag2']);
     });
 
     test('parses single text message', () => {
-      const markdown = `---
+const markdown = `---
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages:
@@ -762,11 +748,10 @@ Hello, world!`;
     });
 
     test('parses multiple messages', () => {
-      const markdown = `---
+const markdown = `---
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages:
@@ -797,11 +782,10 @@ Hello! How can I help?`;
     });
 
     test('parses multi-modal content from metadata', () => {
-      const markdown = `---
+const markdown = `---
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages:
@@ -838,7 +822,6 @@ Check this:
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages:
@@ -870,7 +853,6 @@ Calling search`;
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages:
@@ -900,7 +882,6 @@ Search results`;
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages:
@@ -931,7 +912,6 @@ Response`;
 id: conv-1
 status: active
 metadata: {}
-tags: []
 createdAt: '2024-01-15T10:00:00.000Z'
 updatedAt: '2024-01-15T10:00:00.000Z'
 messages:
@@ -991,7 +971,6 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
       id: 'conv-1',
       status: 'active',
       metadata: {},
-      tags: [],
       createdAt: '2024-01-15T10:00:00.000Z',
       updatedAt: '2024-01-15T10:00:00.000Z',
       ...rest,
@@ -1008,7 +987,6 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     expect(parsed.id).toBe(original.id);
     expect(parsed.status).toBe(original.status);
     expect(parsed.metadata).toEqual(original.metadata);
-    expect(parsed.tags).toEqual([...original.tags]);
     expect(getOrderedMessages(parsed)).toHaveLength(0);
     expect(parsed.createdAt).toBe(original.createdAt);
     expect(parsed.updatedAt).toBe(original.updatedAt);
@@ -1030,16 +1008,6 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const parsed = fromMarkdown(markdown);
 
     expect(parsed.metadata).toEqual(original.metadata);
-  });
-
-  test('round-trip preserves conversation tags', () => {
-    const original = createConversation([], {
-      tags: ['important', 'support', 'billing'],
-    });
-    const markdown = toMarkdown(original, { includeMetadata: true });
-    const parsed = fromMarkdown(markdown);
-
-    expect(parsed.tags).toEqual([...original.tags]);
   });
 
   test('round-trip preserves conversation status', () => {
@@ -1312,7 +1280,6 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
       title: 'Complex Test Conversation',
       status: 'archived',
       metadata: { department: 'support', priority: 'high' },
-      tags: ['urgent', 'billing', 'resolved'],
       ids: originalMessages.map((message) => message.id),
       createdAt: '2024-01-15T10:00:00.000Z',
       updatedAt: '2024-01-15T12:30:00.000Z',
@@ -1327,7 +1294,6 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     expect(parsed.title).toBe(original.title);
     expect(parsed.status).toBe(original.status);
     expect(parsed.metadata).toEqual(original.metadata);
-    expect(parsed.tags).toEqual([...original.tags]);
     expect(parsed.createdAt).toBe(original.createdAt);
     expect(parsed.updatedAt).toBe(original.updatedAt);
 

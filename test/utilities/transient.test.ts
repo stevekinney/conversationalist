@@ -84,7 +84,6 @@ describe('transient utilities', () => {
         id: 'conv-1',
         status: 'active',
         metadata: {},
-        tags: [],
         createdAt: '2024-01-15T10:00:00.000Z',
         updatedAt: '2024-01-15T10:00:00.000Z',
         ...rest,
@@ -140,7 +139,6 @@ describe('transient utilities', () => {
         id: 'test-conv',
         title: 'Test Conversation',
         status: 'archived',
-        tags: ['important', 'work'],
         metadata: { _temp: 1, permanent: 'value' },
         messages: [
           {
@@ -161,7 +159,6 @@ describe('transient utilities', () => {
       expect(result.id).toBe('test-conv');
       expect(result.title).toBe('Test Conversation');
       expect(result.status).toBe('archived');
-      expect(result.tags).toEqual(['important', 'work']);
       expect(getOrderedMessages(result)[0]?.content).toBe('Test');
       expect(getOrderedMessages(result)[0]?.tokenUsage).toEqual({
         inputTokens: 10,
