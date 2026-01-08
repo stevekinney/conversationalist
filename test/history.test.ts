@@ -8,7 +8,10 @@ import {
   getStatistics,
   truncateToTokenLimit,
 } from '../src';
-import { historyFromMarkdown, historyToMarkdown } from '../src/markdown';
+import {
+  conversationHistoryFromMarkdown,
+  conversationHistoryToMarkdown,
+} from '../src/markdown';
 import type { Conversation, Message } from '../src/types';
 
 const getOrderedMessages = (conversation: Conversation): Message[] =>
@@ -248,11 +251,13 @@ describe('ConversationHistory', () => {
       expect(history.getStatistics().total).toBe(1);
       expect(history.current.title).toBe('Query');
       expect(history.toChatMessages()).toHaveLength(1);
-      expect(historyToMarkdown(history)).toContain('### User');
-      expect(historyToMarkdown(history, { includeMetadata: true })).toContain('---');
+      expect(conversationHistoryToMarkdown(history)).toContain('### User');
+      expect(
+        conversationHistoryToMarkdown(history, { includeMetadata: true }),
+      ).toContain('---');
 
-      const restored = historyFromMarkdown(
-        historyToMarkdown(history, { includeMetadata: true }),
+      const restored = conversationHistoryFromMarkdown(
+        conversationHistoryToMarkdown(history, { includeMetadata: true }),
       );
       const restoredMessages = getOrderedMessages(restored.current);
       expect(restoredMessages).toHaveLength(1);

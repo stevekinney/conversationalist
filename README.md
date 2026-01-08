@@ -106,14 +106,9 @@ with `messages`. Use `getMessages(conversation)` for ordered arrays, or
 
 ### Messages
 
-Messages have roles and can contain text or multi-modal content. Optional fields include
-`metadata`, `hidden`, `tokenUsage`, `toolCall`, and `toolResult`. Assistant messages can also
-include `goalCompleted` (see `AssistantMessage`).
-Use `isAssistantMessage` to narrow when you need `goalCompleted`.
-Metadata and tool payloads are typed as `JSONValue` so conversations remain JSON-serializable.
+Messages have roles and can contain text or multi-modal content. Optional fields include `metadata`, `hidden`, `tokenUsage`, `toolCall`, and `toolResult`. Assistant messages can also include `goalCompleted` (see `AssistantMessage`). Use `isAssistantMessage` to narrow when you need `goalCompleted`. Metadata and tool payloads are typed as `JSONValue` so conversations remain JSON-serializable.
 
-**Roles**: `user`, `assistant`, `system`, `developer`, `tool-use`, `tool-result`, `snapshot`.
-The `snapshot` role is for internal state and is skipped by adapters.
+**Roles**: `user`, `assistant`, `system`, `developer`, `tool-use`, `tool-result`, `snapshot`. The `snapshot` role is for internal state and is skipped by adapters.
 
 ```ts
 import { appendMessages } from 'conversationalist';
@@ -127,13 +122,11 @@ conversation = appendMessages(conversation, {
 });
 ```
 
-**Hidden messages** remain in history but are skipped by default when querying or adapting to
-providers. This is perfect for internal logging or "thinking" steps.
+**Hidden messages** remain in history but are skipped by default when querying or adapting to providers. This is perfect for internal logging or "thinking" steps.
 
 ### Tool Calls
 
-Tool calls are represented as paired `tool-use` and `tool-result` messages. Tool results
-are validated to ensure the referenced call exists.
+Tool calls are represented as paired `tool-use` and `tool-result` messages. Tool results are validated to ensure the referenced call exists.
 
 ```ts
 conversation = appendMessages(
@@ -534,7 +527,7 @@ const firstMessage = history.get(ids[0]!);
 
 ### Event Subscription
 
-`ConversationHistory` implements `EventTarget` and follows the Svelte store contract. You can listen for changes using standard DOM events or the `subscribe` method.
+`ConversationHistory` implements `EventTarget` (and follows the Svelte store contract). You can listen for changes using standard DOM events or the `subscribe` method.
 
 #### Using DOM Events
 
@@ -701,12 +694,15 @@ You can also convert a conversation to Markdown format for human-readable storag
 
 ```ts
 import { ConversationHistory } from 'conversationalist';
-import { historyFromMarkdown, historyToMarkdown } from 'conversationalist/markdown';
+import {
+  conversationHistoryFromMarkdown,
+  conversationHistoryToMarkdown,
+} from 'conversationalist/markdown';
 
 const history = new ConversationHistory();
 
 // Export to clean, readable Markdown
-const markdown = historyToMarkdown(history);
+const markdown = conversationHistoryToMarkdown(history);
 // ### User
 //
 // Hello!
@@ -716,10 +712,12 @@ const markdown = historyToMarkdown(history);
 // Hi there!
 
 // Export with full metadata (lossless round-trip)
-const markdownWithMetadata = historyToMarkdown(history, { includeMetadata: true });
+const markdownWithMetadata = conversationHistoryToMarkdown(history, {
+  includeMetadata: true,
+});
 
 // Export with additional controls (redaction, transient stripping, hidden handling)
-const markdownSafe = historyToMarkdown(history, {
+const markdownSafe = conversationHistoryToMarkdown(history, {
   includeMetadata: true,
   stripTransient: true,
   redactToolArguments: true,
@@ -728,7 +726,7 @@ const markdownSafe = historyToMarkdown(history, {
 });
 
 // Restore from Markdown
-const restored = historyFromMarkdown(markdownWithMetadata);
+const restored = conversationHistoryFromMarkdown(markdownWithMetadata);
 ```
 
 ### Export Helpers
@@ -779,13 +777,9 @@ For more complex applications, you can wrap the logic into a custom hook. This e
 import { useState, useCallback, useEffect } from 'react';
 import { ConversationHistory, createConversation, getMessages } from 'conversationalist';
 
-export function useChat(initialTitle?: string) {
+export function useChat() {
   // 1. Initialize history (this could also come from context or props)
-  const [history] = useState(() =>
-    initialTitle
-      ? new ConversationHistory(createConversation({ title: initialTitle }))
-      : new ConversationHistory(),
-  );
+  const [history] = useState(() => new ConversationHistory());
 
   // 2. Sync history with local state for reactivity
   const [conversation, setConversation] = useState(history.current);
@@ -921,7 +915,7 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 | **Context**      | `truncateToTokenLimit`, `getRecentMessages`, `estimateConversationTokens`                                                                                                                                                       |
 | **Querying**     | `getMessages`, `getMessageIds`, `getMessageById`, `getStatistics`                                                                                                                                                               |
 | **Conversion**   | `toChatMessages`, `pairToolCallsWithResults`                                                                                                                                                                                    |
-| **Markdown**     | `toMarkdown`, `fromMarkdown`, `historyToMarkdown`, `historyFromMarkdown` (from `conversationalist/markdown`)                                                                                                                    |
+| **Markdown**     | `toMarkdown`, `fromMarkdown`, `conversationHistoryToMarkdown`, `conversationHistoryFromMarkdown` (from `conversationalist/markdown`)                                                                                            |
 | **Export**       | `exportMarkdown`, `normalizeLineEndings` (from `conversationalist/export`)                                                                                                                                                      |
 | **Schemas**      | `conversationSchema`, `messageJSONSchema`, `messageInputSchema`, `messageRoleSchema`, `multiModalContentSchema`, `jsonValueSchema`, `toolCallSchema`, `toolResultSchema`, `tokenUsageSchema` (from `conversationalist/schemas`) |
 | **Role Labels**  | `ROLE_LABELS`, `LABEL_TO_ROLE`, `getRoleLabel`, `getRoleFromLabel` (from `conversationalist/markdown`)                                                                                                                          |

@@ -26,7 +26,7 @@ export {
 /**
  * Converts a ConversationHistory instance to Markdown.
  */
-export function historyToMarkdown(
+export function conversationHistoryToMarkdown(
   history: ConversationHistory,
   options?: ToMarkdownOptions,
 ): string {
@@ -36,7 +36,7 @@ export function historyToMarkdown(
 /**
  * Creates a ConversationHistory instance from a Markdown string.
  */
-export function historyFromMarkdown(
+export function conversationHistoryFromMarkdown(
   markdown: string,
   environment?: Partial<ConversationEnvironment>,
 ): ConversationHistory {
