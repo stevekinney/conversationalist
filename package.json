@@ -109,6 +109,7 @@
   },
   "dependencies": {
     "change-case": "^5.4.4",
+    "event-emission": "^0.2.1",
     "gray-matter": "^4.0.3"
   },
   "devDependencies": {

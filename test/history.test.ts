@@ -361,10 +361,24 @@ describe('ConversationHistory', () => {
       const history = new ConversationHistory(createConversation());
       let changeCount = 0;
       let lastType = '';
+      const actionEvents: Array<{ type: string; detailType: string }> = [];
 
       const unsubscribe = history.addEventListener('change', (e: any) => {
         changeCount++;
+        expect(e.type).toBe('change');
         lastType = e.detail.type;
+      }) as () => void;
+      const unsubPush = history.addEventListener('push', (e: any) => {
+        actionEvents.push({ type: e.type, detailType: e.detail.type });
+      }) as () => void;
+      const unsubUndo = history.addEventListener('undo', (e: any) => {
+        actionEvents.push({ type: e.type, detailType: e.detail.type });
+      }) as () => void;
+      const unsubRedo = history.addEventListener('redo', (e: any) => {
+        actionEvents.push({ type: e.type, detailType: e.detail.type });
+      }) as () => void;
+      const unsubSwitch = history.addEventListener('switch', (e: any) => {
+        actionEvents.push({ type: e.type, detailType: e.detail.type });
       }) as () => void;
 
       history.appendUserMessage('test');
@@ -386,8 +400,29 @@ describe('ConversationHistory', () => {
       expect(lastType).toBe('switch');
 
       unsubscribe();
+      unsubPush();
+      unsubUndo();
+      unsubRedo();
+      unsubSwitch();
       history.appendUserMessage('after unsubscribe');
       expect(changeCount).toBe(6); // no increase
+
+      expect(actionEvents.map((event) => event.type)).toEqual([
+        'push',
+        'undo',
+        'redo',
+        'undo',
+        'push',
+        'switch',
+      ]);
+      expect(actionEvents.map((event) => event.detailType)).toEqual([
+        'push',
+        'undo',
+        'redo',
+        'undo',
+        'push',
+        'switch',
+      ]);
     });
 
     it('should support AbortSignal in addEventListener', () => {

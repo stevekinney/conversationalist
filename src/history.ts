@@ -1,3 +1,12 @@
+import type {
+  AddEventListenerOptionsLike,
+  EmissionEvent,
+  EventListenerLike,
+  EventListenerOptionsLike,
+  EventTargetLike,
+} from 'event-emission';
+import { createEventTarget } from 'event-emission';
+
 import {
   estimateConversationTokens,
   getRecentMessages,
@@ -52,18 +61,22 @@ import type {
  * Event detail for conversation history changes.
  */
 export interface ConversationHistoryEventDetail {
-  type: string;
+  type: ConversationHistoryActionType;
   conversation: Conversation;
 }
 
-/**
- * Custom event emitted by ConversationHistory.
- */
-export class ConversationHistoryEvent extends CustomEvent<ConversationHistoryEventDetail> {
-  constructor(type: string, detail: ConversationHistoryEventDetail) {
-    super(type, { detail });
-  }
-}
+export type ConversationHistoryEvent = EmissionEvent<
+  ConversationHistoryEventDetail,
+  ConversationHistoryEventType
+>;
+
+type ConversationHistoryActionType = 'push' | 'undo' | 'redo' | 'switch';
+type ConversationHistoryEventType = 'change' | ConversationHistoryActionType;
+type ConversationHistoryEventMap = Record<
+  ConversationHistoryEventType,
+  ConversationHistoryEventDetail
+>;
+type ConversationHistoryEventTarget = EventTargetLike<ConversationHistoryEventMap>;
 
 interface HistoryNode {
   conversation: Conversation;
@@ -77,6 +90,7 @@ interface HistoryNode {
 export class ConversationHistory extends EventTarget {
   private currentNode: HistoryNode;
   private environment: ConversationEnvironment;
+  private readonly events: ConversationHistoryEventTarget;
 
   constructor(
     initial: Conversation = createConversation(),
@@ -84,6 +98,7 @@ export class ConversationHistory extends EventTarget {
   ) {
     super();
     this.environment = resolveConversationEnvironment(environment);
+    this.events = createEventTarget<ConversationHistoryEventMap>();
     this.currentNode = {
       conversation: initial,
       parent: null,
@@ -94,13 +109,38 @@ export class ConversationHistory extends EventTarget {
   /**
    * Dispatches a change event.
    */
-  private notifyChange(type: string): void {
+  private notifyChange(type: ConversationHistoryActionType): void {
     const detail: ConversationHistoryEventDetail = {
       type,
       conversation: this.current,
     };
-    this.dispatchEvent(new ConversationHistoryEvent('change', detail));
-    this.dispatchEvent(new ConversationHistoryEvent(type, detail));
+    this.events.dispatchEvent({ type: 'change', detail });
+    this.events.dispatchEvent({ type, detail });
+  }
+
+  private toAddListenerOptions(
+    options?: boolean | AddEventListenerOptions,
+  ): AddEventListenerOptionsLike | boolean | undefined {
+    if (typeof options === 'boolean' || options === undefined) return options;
+    const mapped: AddEventListenerOptionsLike = {};
+    if (options.capture !== undefined) mapped.capture = options.capture;
+    if (options.once !== undefined) mapped.once = options.once;
+    if (options.passive !== undefined) mapped.passive = options.passive;
+    if (options.signal !== undefined) {
+      mapped.signal = options.signal as NonNullable<
+        AddEventListenerOptionsLike['signal']
+      >;
+    }
+    return mapped;
+  }
+
+  private toRemoveListenerOptions(
+    options?: boolean | EventListenerOptions,
+  ): EventListenerOptionsLike | boolean | undefined {
+    if (typeof options === 'boolean' || options === undefined) return options;
+    const mapped: EventListenerOptionsLike = {};
+    if (options.capture !== undefined) mapped.capture = options.capture;
+    return mapped;
   }
 
   /**
@@ -116,14 +156,39 @@ export class ConversationHistory extends EventTarget {
     options?: boolean | AddEventListenerOptions,
   ): void | (() => void) {
     if (!callback) return;
-    super.addEventListener(type, callback as EventListenerOrEventListenerObject, options);
-    const unsubscribe = () =>
-      this.removeEventListener(
-        type,
-        callback as EventListenerOrEventListenerObject,
-        options,
-      );
-    return unsubscribe;
+    return this.events.addEventListener(
+      type as ConversationHistoryEventType,
+      callback as EventListenerLike<ConversationHistoryEvent>,
+      this.toAddListenerOptions(options),
+    );
+  }
+
+  /**
+   * Removes a listener registered with addEventListener.
+   */
+  override removeEventListener(
+    type: string,
+    callback:
+      | ((event: ConversationHistoryEvent) => void)
+      | EventListenerOrEventListenerObject
+      | null,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    if (!callback) return;
+    this.events.removeEventListener(
+      type as ConversationHistoryEventType,
+      callback as EventListenerLike<ConversationHistoryEvent>,
+      this.toRemoveListenerOptions(options),
+    );
+  }
+
+  /**
+   * Dispatches a DOM-style event through the event-emission target.
+   */
+  override dispatchEvent(event: Event): boolean {
+    return this.events.dispatchEvent(
+      event as Parameters<ConversationHistoryEventTarget['dispatchEvent']>[0],
+    );
   }
 
   /**
@@ -136,8 +201,8 @@ export class ConversationHistory extends EventTarget {
     // Call immediately with current value (Svelte store contract)
     run(this.current);
 
-    const handler = (event: Event) => {
-      if (event instanceof ConversationHistoryEvent) {
+    const handler = (event: ConversationHistoryEvent) => {
+      if (event?.detail?.conversation) {
         run(event.detail.conversation);
       }
     };
@@ -632,6 +697,7 @@ export class ConversationHistory extends EventTarget {
     };
 
     if (root) clearNode(root);
+    this.events.clear();
   }
 }
 

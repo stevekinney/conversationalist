@@ -942,6 +942,33 @@ if (isMessage(value)) {
 }
 ```
 
+## ConversationHistory Events
+
+`ConversationHistory` emits typed events for every mutation. Listen to `change` for any mutation,
+or to specific action events if you only care about a subset.
+
+Events and payloads:
+
+- `change`: fired after any mutation; `detail.type` is the specific action (`push`, `undo`, `redo`, `switch`)
+- `push`: fired after a new conversation state is pushed
+- `undo`: fired after undoing to the previous state
+- `redo`: fired after redoing to a child state
+- `switch`: fired after switching branches
+
+```ts
+import { ConversationHistory, createConversation } from 'conversationalist';
+
+const history = new ConversationHistory(createConversation());
+
+history.addEventListener('change', (event) => {
+  console.log(event.detail.type, event.detail.conversation.id);
+});
+
+history.addEventListener('push', (event) => {
+  console.log('pushed', event.detail.conversation.ids.length);
+});
+```
+
 ## Standard Schema Compliance
 
 All exported Zod schemas implement the [Standard Schema](https://standardschema.dev/) specification via Zod's built-in support. This means they can be used with any Standard Schema-compatible tool without library-specific adapters.
