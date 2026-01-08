@@ -6,16 +6,16 @@ import {
   appendSystemMessage,
   appendUserMessage,
   collapseSystemMessages,
-  computeConversationStatistics,
   createConversation,
   deserializeConversation,
-  getConversationMessages,
   getFirstSystemMessage,
   getMessageAtPosition,
-  getMessageByIdentifier,
+  getMessageById,
+  getMessageIds,
+  getMessages,
+  getStatistics,
   getSystemMessages,
   hasSystemMessage,
-  migrateConversationJSON,
   prependSystemMessage,
   redactMessageAtPosition,
   replaceSystemMessage,
@@ -24,7 +24,13 @@ import {
   toChatMessages,
 } from '../src/conversation';
 import { ConversationalistError } from '../src/errors';
-import { CURRENT_SCHEMA_VERSION } from '../src/types';
+import type { Conversation, Message } from '../src/types';
+import { CURRENT_SCHEMA_VERSION, migrateConversation } from '../src/versioning';
+
+const getOrderedMessages = (conversation: Conversation): Message[] =>
+  conversation.ids
+    .map((id) => conversation.messages[id])
+    .filter((message): message is Message => Boolean(message));
 
 describe('conversation (functional)', () => {
   test('create, append, statistics and encode', () => {
@@ -35,7 +41,7 @@ describe('conversation (functional)', () => {
       { type: 'image', url: 'https://example.com/i.png' },
     ]);
 
-    const stats = computeConversationStatistics(c);
+    const stats = getStatistics(c);
     expect(stats.total).toBe(2);
     expect(stats.byRole['user']).toBe(1);
     expect(stats.withImages).toBe(1);
@@ -49,23 +55,24 @@ describe('conversation (functional)', () => {
     let c = createConversation();
     c = appendUserMessage(c, 'secret');
     c = redactMessageAtPosition(c, 0, '[REDACTED]');
-    expect(c.messages[0]!.content).toBe('[REDACTED]');
+    expect(getOrderedMessages(c)[0]!.content).toBe('[REDACTED]');
   });
 
-  test('getConversationMessages includeHidden and lookup helpers', () => {
+  test('getMessages includeHidden and lookup helpers', () => {
     let c = createConversation();
     c = appendMessages(
       c,
       { role: 'system', content: 's', metadata: { v: 1 } },
       { role: 'user', content: 'u', hidden: true },
     );
-    const visible = getConversationMessages(c);
+    const visible = getMessages(c);
     expect(visible.length).toBe(1);
-    const all = getConversationMessages(c, { includeHidden: true });
+    const all = getMessages(c, { includeHidden: true });
     expect(all.length).toBe(2);
     expect(getMessageAtPosition(c, 1)?.role).toBe('user');
     const id = all[0]!.id;
-    expect(getMessageByIdentifier(c, id)?.id).toBe(id);
+    expect(getMessageById(c, id)?.id).toBe(id);
+    expect(getMessageIds(c)).toEqual(all.map((message) => message.id));
     expect(searchConversationMessages(c, (m) => m.role === 'system').length).toBe(1);
   });
 
@@ -164,7 +171,8 @@ describe('conversation (functional)', () => {
     const restored = deserializeConversation(json);
     expect(restored.title).toBe('T');
     expect(restored.tags.length).toBe(2);
-    expect(restored.messages[0]!.metadata.foo).toBe(1);
+    expect(getOrderedMessages(restored)[0]!.metadata.foo).toBe(1);
+    expect(restored.ids).toEqual(c.ids);
   });
   test('tool linkage is validated across batch', () => {
     let c = createConversation();
@@ -190,7 +198,7 @@ describe('conversation (functional)', () => {
         toolResult: { callId: 'call-1', outcome: 'success', content: {} },
       },
     );
-    expect(c.messages.length).toBe(2);
+    expect(c.ids.length).toBe(2);
   });
 
   test('append tool referencing prior tool-use in existing conversation', () => {
@@ -206,8 +214,9 @@ describe('conversation (functional)', () => {
       content: 'ok',
       toolResult: { callId: 'prev-call', outcome: 'success', content: {} },
     });
-    expect(c.messages.length).toBe(2);
-    expect(c.messages[1]!.role).toBe('tool-result');
+    const messages = getOrderedMessages(c);
+    expect(messages.length).toBe(2);
+    expect(messages[1]!.role).toBe('tool-result');
   });
 
   test('deserialize with tool-use and tool-result preserves linkage', () => {
@@ -227,9 +236,10 @@ describe('conversation (functional)', () => {
     );
     const json = serializeConversation(c);
     const restored = deserializeConversation(json);
-    expect(restored.messages.length).toBe(2);
-    expect(restored.messages[0]!.toolCall?.id).toBe('dc1');
-    expect(restored.messages[1]!.toolResult?.callId).toBe('dc1');
+    const restoredMessages = getOrderedMessages(restored);
+    expect(restoredMessages.length).toBe(2);
+    expect(restoredMessages[0]!.toolCall?.id).toBe('dc1');
+    expect(restoredMessages[1]!.toolResult?.callId).toBe('dc1');
   });
 
   test('appendMessages respects injected environment for ids and timestamps', () => {
@@ -239,15 +249,16 @@ describe('conversation (functional)', () => {
     };
     const base = createConversation();
     const next = appendMessages(base, { role: 'user', content: 'hello' }, env);
-    expect(next.messages[0]!.id).toBe('custom-id');
-    expect(next.messages[0]!.createdAt).toBe('2000-01-01T00:00:00.000Z');
+    const messages = getOrderedMessages(next);
+    expect(messages[0]!.id).toBe('custom-id');
+    expect(messages[0]!.createdAt).toBe('2000-01-01T00:00:00.000Z');
     expect(next.updatedAt).toBe('2000-01-01T00:00:00.000Z');
   });
 
   test('appendMessages can be invoked without inputs', () => {
     const base = createConversation();
     const next = appendMessages(base);
-    expect(next.messages.length).toBe(0);
+    expect(next.ids.length).toBe(0);
     expect(next).not.toBe(base);
   });
 
@@ -255,7 +266,7 @@ describe('conversation (functional)', () => {
     const base = createConversation();
     const env = { now: () => '2024-05-05T05:05:05.000Z' };
     const next = appendMessages(base, env);
-    expect(next.messages.length).toBe(0);
+    expect(next.ids.length).toBe(0);
     expect(next.updatedAt).toBe('2024-05-05T05:05:05.000Z');
   });
 });
@@ -332,26 +343,28 @@ describe('system message management', () => {
 
     c = prependSystemMessage(c, 'system prompt', { key: 'value' });
 
-    expect(c.messages.length).toBe(3);
-    expect(c.messages[0]!.role).toBe('system');
-    expect(c.messages[0]!.content).toBe('system prompt');
-    expect(c.messages[0]!.position).toBe(0);
-    expect(c.messages[0]!.metadata.key).toBe('value');
+    const messages = getOrderedMessages(c);
+    expect(messages.length).toBe(3);
+    expect(messages[0]!.role).toBe('system');
+    expect(messages[0]!.content).toBe('system prompt');
+    expect(messages[0]!.position).toBe(0);
+    expect(messages[0]!.metadata.key).toBe('value');
 
     // Check positions were renumbered
-    expect(c.messages[1]!.role).toBe('user');
-    expect(c.messages[1]!.position).toBe(1);
-    expect(c.messages[2]!.role).toBe('assistant');
-    expect(c.messages[2]!.position).toBe(2);
+    expect(messages[1]!.role).toBe('user');
+    expect(messages[1]!.position).toBe(1);
+    expect(messages[2]!.role).toBe('assistant');
+    expect(messages[2]!.position).toBe(2);
   });
 
   test('prependSystemMessage to empty conversation', () => {
     let c = createConversation();
     c = prependSystemMessage(c, 'first');
 
-    expect(c.messages.length).toBe(1);
-    expect(c.messages[0]!.content).toBe('first');
-    expect(c.messages[0]!.position).toBe(0);
+    const messages = getOrderedMessages(c);
+    expect(messages.length).toBe(1);
+    expect(messages[0]!.content).toBe('first');
+    expect(messages[0]!.position).toBe(0);
   });
 
   test('prependSystemMessage preserves immutability', () => {
@@ -359,10 +372,12 @@ describe('system message management', () => {
     const c2 = appendUserMessage(c1, 'u');
     const c3 = prependSystemMessage(c2, 's');
 
-    expect(c2.messages.length).toBe(1);
-    expect(c3.messages.length).toBe(2);
-    expect(c2.messages[0]!.position).toBe(0);
-    expect(c3.messages[0]!.role).toBe('system');
+    const c2Messages = getOrderedMessages(c2);
+    const c3Messages = getOrderedMessages(c3);
+    expect(c2Messages.length).toBe(1);
+    expect(c3Messages.length).toBe(2);
+    expect(c2Messages[0]!.position).toBe(0);
+    expect(c3Messages[0]!.role).toBe('system');
   });
 
   test('replaceSystemMessage replaces first system message', () => {
@@ -374,14 +389,15 @@ describe('system message management', () => {
       { role: 'system', content: 'another' },
     );
 
-    const originalId = c.messages[0]!.id;
+    const originalId = getOrderedMessages(c)[0]!.id;
     c = replaceSystemMessage(c, 'new system prompt', { v: 2 });
 
-    expect(c.messages.length).toBe(3);
-    expect(c.messages[0]!.id).toBe(originalId);
-    expect(c.messages[0]!.content).toBe('new system prompt');
-    expect(c.messages[0]!.metadata.v).toBe(2);
-    expect(c.messages[2]!.content).toBe('another'); // Second system message unchanged
+    const messages = getOrderedMessages(c);
+    expect(messages.length).toBe(3);
+    expect(messages[0]!.id).toBe(originalId);
+    expect(messages[0]!.content).toBe('new system prompt');
+    expect(messages[0]!.metadata.v).toBe(2);
+    expect(messages[2]!.content).toBe('another'); // Second system message unchanged
   });
 
   test('replaceSystemMessage preserves original metadata when not provided', () => {
@@ -390,9 +406,10 @@ describe('system message management', () => {
 
     c = replaceSystemMessage(c, 'new');
 
-    expect(c.messages[0]!.content).toBe('new');
-    expect(c.messages[0]!.metadata.foo).toBe('bar');
-    expect(c.messages[0]!.metadata.num).toBe(42);
+    const messages = getOrderedMessages(c);
+    expect(messages[0]!.content).toBe('new');
+    expect(messages[0]!.metadata.foo).toBe('bar');
+    expect(messages[0]!.metadata.num).toBe(42);
   });
 
   test('replaceSystemMessage prepends when no system message exists', () => {
@@ -405,12 +422,13 @@ describe('system message management', () => {
 
     c = replaceSystemMessage(c, 'new system', { k: 'v' });
 
-    expect(c.messages.length).toBe(3);
-    expect(c.messages[0]!.role).toBe('system');
-    expect(c.messages[0]!.content).toBe('new system');
-    expect(c.messages[0]!.position).toBe(0);
-    expect(c.messages[1]!.position).toBe(1);
-    expect(c.messages[2]!.position).toBe(2);
+    const messages = getOrderedMessages(c);
+    expect(messages.length).toBe(3);
+    expect(messages[0]!.role).toBe('system');
+    expect(messages[0]!.content).toBe('new system');
+    expect(messages[0]!.position).toBe(0);
+    expect(messages[1]!.position).toBe(1);
+    expect(messages[2]!.position).toBe(2);
   });
 
   test('collapseSystemMessages with no system messages returns same conversation', () => {
@@ -450,16 +468,17 @@ describe('system message management', () => {
 
     c = collapseSystemMessages(c);
 
-    expect(c.messages.length).toBe(3); // 1 system + user + assistant
-    expect(c.messages[0]!.role).toBe('system');
-    expect(c.messages[0]!.content).toBe('first\nsecond\nthird');
-    expect(c.messages[1]!.role).toBe('user');
-    expect(c.messages[2]!.role).toBe('assistant');
+    const messages = getOrderedMessages(c);
+    expect(messages.length).toBe(3); // 1 system + user + assistant
+    expect(messages[0]!.role).toBe('system');
+    expect(messages[0]!.content).toBe('first\nsecond\nthird');
+    expect(messages[1]!.role).toBe('user');
+    expect(messages[2]!.role).toBe('assistant');
 
     // Check positions are renumbered
-    expect(c.messages[0]!.position).toBe(0);
-    expect(c.messages[1]!.position).toBe(1);
-    expect(c.messages[2]!.position).toBe(2);
+    expect(messages[0]!.position).toBe(0);
+    expect(messages[1]!.position).toBe(1);
+    expect(messages[2]!.position).toBe(2);
   });
 
   test('collapseSystemMessages deduplicates exact content', () => {
@@ -474,8 +493,9 @@ describe('system message management', () => {
 
     c = collapseSystemMessages(c);
 
-    expect(c.messages.length).toBe(1);
-    expect(c.messages[0]!.content).toBe('same\ndifferent\nanother');
+    const messages = getOrderedMessages(c);
+    expect(messages.length).toBe(1);
+    expect(messages[0]!.content).toBe('same\ndifferent\nanother');
   });
 
   test('collapseSystemMessages includes hidden messages', () => {
@@ -489,8 +509,9 @@ describe('system message management', () => {
 
     c = collapseSystemMessages(c);
 
-    expect(c.messages.length).toBe(2);
-    expect(c.messages[0]!.content).toBe('visible\nhidden');
+    const messages = getOrderedMessages(c);
+    expect(messages.length).toBe(2);
+    expect(messages[0]!.content).toBe('visible\nhidden');
   });
 
   test('collapseSystemMessages flattens multi-modal content to text', () => {
@@ -509,7 +530,7 @@ describe('system message management', () => {
 
     c = collapseSystemMessages(c);
 
-    expect(c.messages[0]!.content).toBe('Rules:\nSecond');
+    expect(getOrderedMessages(c)[0]!.content).toBe('Rules:\nSecond');
   });
 
   test('collapseSystemMessages preserves first system message properties', () => {
@@ -521,15 +542,16 @@ describe('system message management', () => {
       { role: 'user', content: 'u' },
     );
 
-    const originalId = c.messages[0]!.id;
-    const originalCreatedAt = c.messages[0]!.createdAt;
+    const originalId = getOrderedMessages(c)[0]!.id;
+    const originalCreatedAt = getOrderedMessages(c)[0]!.createdAt;
 
     c = collapseSystemMessages(c);
 
-    expect(c.messages[0]!.id).toBe(originalId);
-    expect(c.messages[0]!.createdAt).toBe(originalCreatedAt);
-    expect(c.messages[0]!.metadata.key).toBe('value');
-    expect(c.messages[0]!.hidden).toBeTrue();
+    const messages = getOrderedMessages(c);
+    expect(messages[0]!.id).toBe(originalId);
+    expect(messages[0]!.createdAt).toBe(originalCreatedAt);
+    expect(messages[0]!.metadata.key).toBe('value');
+    expect(messages[0]!.hidden).toBeTrue();
   });
 
   test('collapseSystemMessages handles empty content correctly', () => {
@@ -544,7 +566,7 @@ describe('system message management', () => {
     c = collapseSystemMessages(c);
 
     // Empty content should be filtered out
-    expect(c.messages[0]!.content).toBe('first\nsecond');
+    expect(getOrderedMessages(c)[0]!.content).toBe('first\nsecond');
   });
 
   test('mutation operations return new conversation instances', () => {
@@ -568,25 +590,28 @@ describe('system message management', () => {
   });
 });
 
-describe('migrateConversationJSON', () => {
+describe('migrateConversation', () => {
   test('handles null input', () => {
-    const result = migrateConversationJSON(null);
+    const result = migrateConversation(null);
     expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(result.id).toBe('');
     expect(result.status).toBe('active');
-    expect(result.messages).toEqual([]);
+    expect(result.ids).toEqual([]);
+    expect(result.messages).toEqual({});
   });
 
   test('handles array input', () => {
-    const result = migrateConversationJSON([]);
+    const result = migrateConversation([]);
     expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(result.id).toBe('');
+    expect(result.ids).toEqual([]);
   });
 
   test('handles primitive input', () => {
-    const result = migrateConversationJSON('string');
+    const result = migrateConversation('string');
     expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(result.id).toBe('');
+    expect(result.ids).toEqual([]);
   });
 
   test('adds schemaVersion to legacy data', () => {
@@ -600,9 +625,10 @@ describe('migrateConversationJSON', () => {
       updatedAt: '2024-01-15T10:00:00.000Z',
     };
 
-    const result = migrateConversationJSON(legacy);
+    const result = migrateConversation(legacy);
     expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(result.id).toBe('conv-1');
+    expect(result.ids).toEqual([]);
   });
 
   test('preserves existing schemaVersion', () => {
@@ -617,8 +643,9 @@ describe('migrateConversationJSON', () => {
       updatedAt: '2024-01-15T10:00:00.000Z',
     };
 
-    const result = migrateConversationJSON(data);
+    const result = migrateConversation(data);
     expect(result.schemaVersion).toBe(99);
+    expect(result.ids).toEqual([]);
   });
 });
 
@@ -640,40 +667,23 @@ describe('serializeConversation options', () => {
     c = appendUserMessage(c, 'hello');
     c = {
       ...c,
-      messages: c.messages.map((m) => ({
-        ...m,
-        metadata: { ...m.metadata, _deliveryStatus: 'sent', source: 'web' },
-      })),
+      messages: Object.fromEntries(
+        getOrderedMessages(c).map((m) => [
+          m.id,
+          {
+            ...m,
+            metadata: { ...m.metadata, _deliveryStatus: 'sent', source: 'web' },
+          },
+        ]),
+      ),
     };
 
     const result = serializeConversation(c, { stripTransient: true });
-    expect(result.messages[0].metadata).toEqual({ source: 'web' });
-    expect(result.messages[0].metadata).not.toHaveProperty('_deliveryStatus');
+    const firstId = result.ids[0]!;
+    expect(result.messages[firstId].metadata).toEqual({ source: 'web' });
+    expect(result.messages[firstId].metadata).not.toHaveProperty('_deliveryStatus');
   });
 
-  test('deterministic sorts messages by position', () => {
-    let c = createConversation();
-    c = appendUserMessage(c, 'first');
-    c = appendAssistantMessage(c, 'second');
-    c = appendUserMessage(c, 'third');
-
-    const result = serializeConversation(c, { deterministic: true });
-    expect(result.messages[0].position).toBe(0);
-    expect(result.messages[1].position).toBe(1);
-    expect(result.messages[2].position).toBe(2);
-  });
-
-  test('deterministic sorts object keys', () => {
-    let c = createConversation();
-    c = {
-      ...c,
-      metadata: { z: 1, a: 2, m: 3 },
-    };
-
-    const result = serializeConversation(c, { deterministic: true });
-    const keys = Object.keys(result.metadata);
-    expect(keys).toEqual(['a', 'm', 'z']);
-  });
 
   test('redactToolArguments replaces tool arguments with [REDACTED]', () => {
     let c = createConversation();
@@ -684,7 +694,8 @@ describe('serializeConversation options', () => {
     });
 
     const result = serializeConversation(c, { redactToolArguments: true });
-    expect(result.messages[0].toolCall?.arguments).toBe('[REDACTED]');
+    const firstId = result.ids[0]!;
+    expect(result.messages[firstId].toolCall?.arguments).toBe('[REDACTED]');
   });
 
   test('redactToolResults replaces tool result content with [REDACTED]', () => {
@@ -699,12 +710,71 @@ describe('serializeConversation options', () => {
       {
         role: 'tool-result',
         content: 'Result returned',
-        toolResult: { callId: 'call-1', content: 'sensitive result data' },
+        toolResult: {
+          callId: 'call-1',
+          outcome: 'error',
+          content: 'sensitive result data',
+          toolCallId: 'call-1',
+          toolName: 'search',
+          result: { status: 'sensitive payload' },
+          error: 'sensitive error message',
+        },
       },
     );
 
     const result = serializeConversation(c, { redactToolResults: true });
-    expect(result.messages[1].toolResult?.content).toBe('[REDACTED]');
+    const toolResult = result.messages[result.ids[1]!].toolResult;
+    expect(toolResult?.content).toBe('[REDACTED]');
+    expect(toolResult?.result).toBe('[REDACTED]');
+    expect(toolResult?.error).toBe('[REDACTED]');
+    expect(toolResult?.toolCallId).toBe('call-1');
+    expect(toolResult?.toolName).toBe('search');
+  });
+
+  test('includeHidden can omit hidden messages', () => {
+    let c = createConversation();
+    c = appendMessages(
+      c,
+      { role: 'user', content: 'visible' },
+      { role: 'assistant', content: 'hidden', hidden: true },
+    );
+
+    const result = serializeConversation(c, { includeHidden: false });
+    expect(result.ids).toHaveLength(1);
+    expect(result.messages[result.ids[0]!].content).toBe('visible');
+  });
+
+  test('redactHiddenContent replaces hidden message content', () => {
+    let c = createConversation();
+    c = appendMessages(
+      c,
+      { role: 'user', content: 'visible' },
+      { role: 'assistant', content: 'secret', hidden: true },
+    );
+
+    const result = serializeConversation(c, {
+      redactHiddenContent: true,
+      redactedPlaceholder: '[HIDDEN]',
+    });
+
+    expect(result.messages[result.ids[0]!].content).toBe('visible');
+    expect(result.messages[result.ids[1]!].content).toBe('[HIDDEN]');
+  });
+
+  test('redactedPlaceholder applies to tool redaction', () => {
+    let c = createConversation();
+    c = appendMessages(c, {
+      role: 'tool-use',
+      content: 'Calling search',
+      toolCall: { id: 'call-1', name: 'search', arguments: 'sensitive data' },
+    });
+
+    const result = serializeConversation(c, {
+      redactToolArguments: true,
+      redactedPlaceholder: '[MASKED]',
+    });
+
+    expect(result.messages[result.ids[0]!].toolCall?.arguments).toBe('[MASKED]');
   });
 
   test('all options can be combined', () => {
@@ -729,21 +799,19 @@ describe('serializeConversation options', () => {
     );
 
     const result = serializeConversation(c, {
-      deterministic: true,
       stripTransient: true,
       redactToolArguments: true,
       redactToolResults: true,
+      includeHidden: true,
+      redactHiddenContent: true,
     });
 
     // Check transient stripped
     expect(result.metadata).not.toHaveProperty('_temp');
-    expect(result.messages[0].metadata).not.toHaveProperty('_tempMeta');
-
-    // Check deterministic key sorting
-    expect(Object.keys(result.metadata)).toEqual(['a', 'z']);
+    expect(result.messages[result.ids[0]!].metadata).not.toHaveProperty('_tempMeta');
 
     // Check redaction
-    expect(result.messages[0].toolCall?.arguments).toBe('[REDACTED]');
-    expect(result.messages[1].toolResult?.content).toBe('[REDACTED]');
+    expect(result.messages[result.ids[0]!].toolCall?.arguments).toBe('[REDACTED]');
+    expect(result.messages[result.ids[1]!].toolResult?.content).toBe('[REDACTED]');
   });
 });

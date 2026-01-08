@@ -4,10 +4,55 @@ import {
   type ConversationEnvironment,
   resolveConversationEnvironment,
 } from './environment';
-import type { Conversation, Message, TokenUsage } from './types';
-import { createMessage, toReadonly } from './utilities';
+import type {
+  AssistantMessage,
+  Conversation,
+  JSONValue,
+  Message,
+  TokenUsage,
+} from './types';
+import { createMessage, isAssistantMessage, toReadonly } from './utilities';
+import { getOrderedMessages, toIdRecord } from './utilities/message-store';
 
 const STREAMING_KEY = '__streaming';
+
+const cloneMessage = (
+  original: Message,
+  overrides: {
+    content?: string | MultiModalContent[];
+    metadata?: Record<string, JSONValue>;
+    position?: number;
+    tokenUsage?: TokenUsage;
+  } = {},
+): Message => {
+  const baseMessage = {
+    id: original.id,
+    role: original.role,
+    content:
+      overrides.content ??
+      (typeof original.content === 'string'
+        ? original.content
+        : [...(original.content as MultiModalContent[])]),
+    position: overrides.position ?? original.position,
+    createdAt: original.createdAt,
+    metadata: overrides.metadata ?? { ...original.metadata },
+    hidden: original.hidden,
+    toolCall: original.toolCall ? { ...original.toolCall } : undefined,
+    toolResult: original.toolResult ? { ...original.toolResult } : undefined,
+    tokenUsage: overrides.tokenUsage,
+  };
+
+  if (isAssistantMessage(original)) {
+    const assistantMessage: AssistantMessage = {
+      ...baseMessage,
+      role: 'assistant',
+      goalCompleted: original.goalCompleted,
+    };
+    return createMessage(assistantMessage);
+  }
+
+  return createMessage(baseMessage);
+};
 
 /**
  * Checks if a message is currently streaming (has the streaming metadata flag).
@@ -20,7 +65,7 @@ export function isStreamingMessage(message: Message): boolean {
  * Gets the currently streaming message from a conversation, if any.
  */
 export function getStreamingMessage(conversation: Conversation): Message | undefined {
-  return conversation.messages.find(isStreamingMessage);
+  return getOrderedMessages(conversation).find(isStreamingMessage);
 }
 
 /**
@@ -30,7 +75,7 @@ export function getStreamingMessage(conversation: Conversation): Message | undef
 export function appendStreamingMessage(
   conversation: Conversation,
   role: 'assistant' | 'user',
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): { conversation: Conversation; messageId: string } {
   const resolvedEnvironment = resolveConversationEnvironment(environment);
@@ -41,7 +86,7 @@ export function appendStreamingMessage(
     id: messageId,
     role,
     content: '',
-    position: conversation.messages.length,
+    position: conversation.ids.length,
     createdAt: now,
     metadata: { ...(metadata ?? {}), [STREAMING_KEY]: true },
     hidden: false,
@@ -52,7 +97,8 @@ export function appendStreamingMessage(
 
   const updatedConversation = toReadonly({
     ...conversation,
-    messages: [...conversation.messages, newMessage],
+    ids: [...conversation.ids, messageId],
+    messages: { ...conversation.messages, [messageId]: newMessage },
     updatedAt: now,
   });
 
@@ -72,33 +118,27 @@ export function updateStreamingMessage(
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
 
-  const messageIndex = conversation.messages.findIndex((m) => m.id === messageId);
-  if (messageIndex === -1) {
+  const original = conversation.messages[messageId];
+  if (!original) {
     return conversation;
   }
 
-  const original = conversation.messages[messageIndex]!;
-  const updated = createMessage({
-    id: original.id,
-    role: original.role,
+  const overrides: {
+    content?: string | MultiModalContent[];
+    tokenUsage?: TokenUsage;
+  } = {
     content: typeof content === 'string' ? content : [...content],
-    position: original.position,
-    createdAt: original.createdAt,
-    metadata: { ...original.metadata },
-    hidden: original.hidden,
-    toolCall: original.toolCall ? { ...original.toolCall } : undefined,
-    toolResult: original.toolResult ? { ...original.toolResult } : undefined,
-    tokenUsage: original.tokenUsage ? { ...original.tokenUsage } : undefined,
-    goalCompleted: original.goalCompleted,
-  });
+  };
+  if (original.tokenUsage) {
+    overrides.tokenUsage = { ...original.tokenUsage };
+  }
 
-  const messages = conversation.messages.map((m, i) =>
-    i === messageIndex ? updated : m,
-  );
+  const updated = cloneMessage(original, overrides);
 
   return toReadonly({
     ...conversation,
-    messages,
+    ids: [...conversation.ids],
+    messages: { ...conversation.messages, [updated.id]: updated },
     updatedAt: now,
   });
 }
@@ -112,51 +152,44 @@ export function finalizeStreamingMessage(
   messageId: string,
   options?: {
     tokenUsage?: TokenUsage;
-    metadata?: Record<string, unknown>;
+    metadata?: Record<string, JSONValue>;
   },
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
 
-  const messageIndex = conversation.messages.findIndex((m) => m.id === messageId);
-  if (messageIndex === -1) {
+  const original = conversation.messages[messageId];
+  if (!original) {
     return conversation;
   }
-
-  const original = conversation.messages[messageIndex]!;
 
   // Remove the streaming flag and merge in any new metadata
   const { [STREAMING_KEY]: _, ...restMetadata } = original.metadata as Record<
     string,
-    unknown
+    JSONValue
   >;
-  const finalMetadata = { ...restMetadata, ...(options?.metadata ?? {}) };
+  const finalMetadata: Record<string, JSONValue> = {
+    ...restMetadata,
+    ...(options?.metadata ?? {}),
+  };
 
-  const updated = createMessage({
-    id: original.id,
-    role: original.role,
-    content:
-      typeof original.content === 'string'
-        ? original.content
-        : [...(original.content as MultiModalContent[])],
-    position: original.position,
-    createdAt: original.createdAt,
+  const finalizeOverrides: {
+    metadata?: Record<string, JSONValue>;
+    tokenUsage?: TokenUsage;
+  } = {
     metadata: finalMetadata,
-    hidden: original.hidden,
-    toolCall: original.toolCall ? { ...original.toolCall } : undefined,
-    toolResult: original.toolResult ? { ...original.toolResult } : undefined,
-    tokenUsage: options?.tokenUsage ? { ...options.tokenUsage } : undefined,
-    goalCompleted: original.goalCompleted,
-  });
+  };
+  if (options?.tokenUsage) {
+    finalizeOverrides.tokenUsage = { ...options.tokenUsage };
+  }
 
-  const messages = conversation.messages.map((m, i) =>
-    i === messageIndex ? updated : m,
-  );
+  const updated = cloneMessage(original, finalizeOverrides);
 
   return toReadonly({
     ...conversation,
-    messages,
+    ids: [...conversation.ids],
+    messages: { ...conversation.messages, [updated.id]: updated },
     updatedAt: now,
   });
 }
@@ -172,37 +205,30 @@ export function cancelStreamingMessage(
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
 
-  const messageIndex = conversation.messages.findIndex((m) => m.id === messageId);
-  if (messageIndex === -1) {
+  if (!conversation.messages[messageId]) {
     return conversation;
   }
 
-  const messages = conversation.messages
+  const messages = getOrderedMessages(conversation)
     .filter((m) => m.id !== messageId)
     .map((message, index) =>
       message.position === index
         ? message
-        : createMessage({
-            id: message.id,
-            role: message.role,
-            content:
-              typeof message.content === 'string'
-                ? message.content
-                : [...(message.content as MultiModalContent[])],
-            position: index,
-            createdAt: message.createdAt,
-            metadata: { ...message.metadata },
-            hidden: message.hidden,
-            toolCall: message.toolCall ? { ...message.toolCall } : undefined,
-            toolResult: message.toolResult ? { ...message.toolResult } : undefined,
-            tokenUsage: message.tokenUsage ? { ...message.tokenUsage } : undefined,
-            goalCompleted: message.goalCompleted,
-          }),
+        : (() => {
+            const overrides: { position: number; tokenUsage?: TokenUsage } = {
+              position: index,
+            };
+            if (message.tokenUsage) {
+              overrides.tokenUsage = { ...message.tokenUsage };
+            }
+            return cloneMessage(message, overrides);
+          })(),
     );
 
   return toReadonly({
     ...conversation,
-    messages,
+    ids: messages.map((message) => message.id),
+    messages: toIdRecord(messages),
     updatedAt: now,
   });
 }

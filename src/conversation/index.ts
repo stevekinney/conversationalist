@@ -14,10 +14,11 @@ export {
 
 // Query
 export {
-  computeConversationStatistics,
-  getConversationMessages,
   getMessageAtPosition,
-  getMessageByIdentifier,
+  getMessageById,
+  getMessageIds,
+  getMessages,
+  getStatistics,
   searchConversationMessages,
 } from './query';
 
@@ -37,7 +38,7 @@ export { redactMessageAtPosition } from './modify';
 // Serialization
 export {
   deserializeConversation,
-  migrateConversationJSON,
+  migrateConversation,
   serializeConversation,
 } from './serialization';
 

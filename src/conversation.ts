@@ -15,24 +15,25 @@ import {
 } from './errors';
 import { copyContent } from './multi-modal';
 import type {
+  AssistantMessage,
   Conversation,
-  ConversationJSON,
   ConversationStatus,
+  JSONValue,
   Message,
   MessageInput,
-  MessageJSON,
   SerializeOptions,
 } from './types';
 import { CURRENT_SCHEMA_VERSION } from './types';
 import {
   createMessage,
+  isAssistantMessage,
   messageHasImages,
   normalizeContent,
-  sortMessagesByPosition,
-  sortObjectKeys,
   stripTransientFromRecord,
   toReadonly,
 } from './utilities';
+import { getOrderedMessages, toIdRecord } from './utilities/message-store';
+import { copyToolResult, redactToolResult } from './utilities/tool-results';
 
 export type { ConversationEnvironment } from './environment';
 
@@ -82,12 +83,15 @@ function partitionAppendArgs(
   return { inputs: args as MessageInput[] };
 }
 
+/**
+ * Creates a new immutable conversation with optional metadata and environment overrides.
+ */
 export function createConversation(
   options?: {
     id?: string;
     title?: string;
     status?: ConversationStatus;
-    metadata?: Record<string, unknown>;
+    metadata?: Record<string, JSONValue>;
     tags?: string[];
   },
   environment?: Partial<ConversationEnvironment>,
@@ -95,18 +99,24 @@ export function createConversation(
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
   const conv: Conversation = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     id: options?.id ?? resolvedEnvironment.randomId(),
     title: options?.title,
     status: options?.status ?? 'active',
     metadata: { ...(options?.metadata ?? {}) },
     tags: [...(options?.tags ?? [])],
-    messages: [],
+    ids: [],
+    messages: {},
     createdAt: now,
     updatedAt: now,
   };
   return toReadonly(conv);
 }
 
+/**
+ * Appends one or more messages to a conversation.
+ * Validates tool-result references and returns a new immutable conversation.
+ */
 export function appendMessages(
   conversation: Conversation,
   ...inputs: MessageInput[]
@@ -122,8 +132,8 @@ export function appendMessages(
   const { inputs, environment } = partitionAppendArgs(args);
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
-  const startPosition = conversation.messages.length;
-  const initialToolUses = buildToolUseIndex(conversation.messages);
+  const startPosition = conversation.ids.length;
+  const initialToolUses = buildToolUseIndex(getOrderedMessages(conversation));
 
   const { messages } = inputs.reduce<{
     toolUses: ToolUseIndex;
@@ -144,7 +154,7 @@ export function appendMessages(
         | string
         | MultiModalContent[];
 
-      const message = createMessage({
+      const baseMessage = {
         id: resolvedEnvironment.randomId(),
         role: processedInput.role,
         content: normalizedContent,
@@ -155,8 +165,19 @@ export function appendMessages(
         toolCall: processedInput.toolCall,
         toolResult: processedInput.toolResult,
         tokenUsage: processedInput.tokenUsage,
-        goalCompleted: processedInput.goalCompleted,
-      });
+      };
+
+      let message: Message;
+      if (processedInput.role === 'assistant') {
+        const assistantMessage: AssistantMessage = {
+          ...baseMessage,
+          role: 'assistant',
+          goalCompleted: processedInput.goalCompleted,
+        };
+        message = createMessage(assistantMessage);
+      } else {
+        message = createMessage(baseMessage);
+      }
 
       const toolUses =
         processedInput.role === 'tool-use' && processedInput.toolCall
@@ -171,18 +192,23 @@ export function appendMessages(
     { toolUses: initialToolUses, messages: [] },
   );
 
+  const messageIds = messages.map((message) => message.id);
   const next: Conversation = {
     ...conversation,
-    messages: [...conversation.messages, ...messages],
+    ids: [...conversation.ids, ...messageIds],
+    messages: { ...conversation.messages, ...toIdRecord(messages) },
     updatedAt: now,
   };
   return toReadonly(next);
 }
 
+/**
+ * Appends a user message to the conversation.
+ */
 export function appendUserMessage(
   conversation: Conversation,
   content: MessageInput['content'],
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   return environment
@@ -190,10 +216,13 @@ export function appendUserMessage(
     : appendMessages(conversation, { role: 'user', content, metadata });
 }
 
+/**
+ * Appends an assistant message to the conversation.
+ */
 export function appendAssistantMessage(
   conversation: Conversation,
   content: MessageInput['content'],
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   return environment
@@ -201,10 +230,13 @@ export function appendAssistantMessage(
     : appendMessages(conversation, { role: 'assistant', content, metadata });
 }
 
+/**
+ * Appends a system message to the conversation.
+ */
 export function appendSystemMessage(
   conversation: Conversation,
   content: string,
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   return environment
@@ -212,44 +244,68 @@ export function appendSystemMessage(
     : appendMessages(conversation, { role: 'system', content, metadata });
 }
 
-export function getConversationMessages(
+/**
+ * Returns messages from a conversation in order.
+ * Hidden messages are excluded by default.
+ */
+export function getMessages(
   conversation: Conversation,
   options?: { includeHidden?: boolean },
-): ReadonlyArray<Message> {
+): Message[] {
   const includeHidden = options?.includeHidden ?? false;
-  return includeHidden
-    ? [...conversation.messages]
-    : conversation.messages.filter((m) => !m.hidden);
+  const ordered = getOrderedMessages(conversation);
+  return includeHidden ? ordered : ordered.filter((m) => !m.hidden);
 }
 
+/**
+ * Returns the message at a specific position index.
+ */
 export function getMessageAtPosition(
   conversation: Conversation,
   position: number,
 ): Message | undefined {
-  return conversation.messages[position];
+  const id = conversation.ids[position];
+  return id ? conversation.messages[id] : undefined;
 }
 
-export function getMessageByIdentifier(
+/**
+ * Returns all message IDs for the conversation in order.
+ */
+export function getMessageIds(conversation: Conversation): string[] {
+  return [...conversation.ids];
+}
+
+/**
+ * Finds a message by its unique identifier.
+ */
+export function getMessageById(
   conversation: Conversation,
   id: string,
 ): Message | undefined {
-  return conversation.messages.find((m) => m.id === id);
+  return conversation.messages[id];
 }
 
+/**
+ * Filters messages using a predicate.
+ */
 export function searchConversationMessages(
   conversation: Conversation,
   predicate: (m: Message) => boolean,
 ): Message[] {
-  return conversation.messages.filter(predicate);
+  return getOrderedMessages(conversation).filter(predicate);
 }
 
-export function computeConversationStatistics(conversation: Conversation): {
+/**
+ * Computes basic statistics about a conversation's messages.
+ */
+export function getStatistics(conversation: Conversation): {
   total: number;
   byRole: Record<string, number>;
   hidden: number;
   withImages: number;
 } {
-  const stats = conversation.messages.reduce(
+  const ordered = getOrderedMessages(conversation);
+  const stats = ordered.reduce(
     (acc, message) => {
       const byRole = {
         ...acc.byRole,
@@ -264,25 +320,37 @@ export function computeConversationStatistics(conversation: Conversation): {
     },
     { byRole: {} as Record<string, number>, hidden: 0, withImages: 0 },
   );
-  return { total: conversation.messages.length, ...stats };
+  return { total: ordered.length, ...stats };
 }
 
+/**
+ * Returns true if the conversation contains any system messages.
+ */
 export function hasSystemMessage(conversation: Conversation): boolean {
-  return conversation.messages.some((m) => m.role === 'system');
+  return getOrderedMessages(conversation).some((m) => m.role === 'system');
 }
 
+/**
+ * Returns the first system message in the conversation, if any.
+ */
 export function getFirstSystemMessage(conversation: Conversation): Message | undefined {
-  return conversation.messages.find((m) => m.role === 'system');
+  return getOrderedMessages(conversation).find((m) => m.role === 'system');
 }
 
+/**
+ * Returns all system messages in the conversation.
+ */
 export function getSystemMessages(conversation: Conversation): ReadonlyArray<Message> {
-  return conversation.messages.filter((m) => m.role === 'system');
+  return getOrderedMessages(conversation).filter((m) => m.role === 'system');
 }
 
+/**
+ * Prepends a system message and renumbers existing messages.
+ */
 export function prependSystemMessage(
   conversation: Conversation,
   content: string,
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   const resolvedEnvironment = resolveConversationEnvironment(environment);
@@ -301,7 +369,8 @@ export function prependSystemMessage(
     tokenUsage: undefined,
   });
 
-  const renumberedMessages = conversation.messages.map((message) =>
+  const ordered = getOrderedMessages(conversation);
+  const renumberedMessages = ordered.map((message) =>
     createMessage({
       id: message.id,
       role: message.role,
@@ -318,26 +387,31 @@ export function prependSystemMessage(
 
   return toReadonly({
     ...conversation,
-    messages: [newMessage, ...renumberedMessages],
+    ids: [newMessage.id, ...ordered.map((message) => message.id)],
+    messages: toIdRecord([newMessage, ...renumberedMessages]),
     updatedAt: now,
   });
 }
 
+/**
+ * Replaces the first system message, or prepends one if none exist.
+ */
 export function replaceSystemMessage(
   conversation: Conversation,
   content: string,
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
-  const firstSystemIndex = conversation.messages.findIndex((m) => m.role === 'system');
+  const ordered = getOrderedMessages(conversation);
+  const firstSystemIndex = ordered.findIndex((m) => m.role === 'system');
 
   if (firstSystemIndex === -1) {
     return prependSystemMessage(conversation, content, metadata, resolvedEnvironment);
   }
 
-  const original = conversation.messages[firstSystemIndex]!;
+  const original = ordered[firstSystemIndex]!;
   const replaced: Message = createMessage({
     id: original.id,
     role: 'system',
@@ -351,19 +425,24 @@ export function replaceSystemMessage(
     tokenUsage: undefined,
   });
 
-  const messages = conversation.messages.map((message, index) =>
-    index === firstSystemIndex ? replaced : message,
-  );
-
-  const next: Conversation = { ...conversation, messages, updatedAt: now };
+  const next: Conversation = {
+    ...conversation,
+    ids: [...conversation.ids],
+    messages: { ...conversation.messages, [replaced.id]: replaced },
+    updatedAt: now,
+  };
   return toReadonly(next);
 }
 
+/**
+ * Collapses multiple system messages into a single deduplicated message.
+ */
 export function collapseSystemMessages(
   conversation: Conversation,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  const systemMessages = conversation.messages.filter((m) => m.role === 'system');
+  const ordered = getOrderedMessages(conversation);
+  const systemMessages = ordered.filter((m) => m.role === 'system');
 
   if (systemMessages.length <= 1) {
     return conversation;
@@ -415,7 +494,7 @@ export function collapseSystemMessages(
     return nextIds;
   }, new Set<string>());
 
-  const messages = conversation.messages
+  const messages = ordered
     .filter((m) => !systemIdsToRemove.has(m.id))
     .map((m) => (m.id === firstSystemMsg.id ? collapsed : m));
 
@@ -437,23 +516,32 @@ export function collapseSystemMessages(
 
   const next: Conversation = {
     ...conversation,
-    messages: renumbered,
+    ids: renumbered.map((message) => message.id),
+    messages: toIdRecord(renumbered),
     updatedAt: now,
   };
   return toReadonly(next);
 }
 
+/**
+ * Replaces message content at the specified position with a placeholder.
+ * Clears tool and token metadata for the redacted message.
+ */
 export function redactMessageAtPosition(
   conversation: Conversation,
   position: number,
   placeholder: string = '[REDACTED]',
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  if (position < 0 || position >= conversation.messages.length) {
-    throw createInvalidPositionError(conversation.messages.length - 1, position);
+  if (position < 0 || position >= conversation.ids.length) {
+    throw createInvalidPositionError(conversation.ids.length - 1, position);
   }
 
-  const original = conversation.messages[position]!;
+  const id = conversation.ids[position];
+  const original = id ? conversation.messages[id] : undefined;
+  if (!original) {
+    throw createInvalidPositionError(conversation.ids.length - 1, position);
+  }
   const redacted: Message = createMessage({
     id: original.id,
     role: original.role,
@@ -469,22 +557,23 @@ export function redactMessageAtPosition(
 
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
-  const messages = conversation.messages.map((message, index) =>
-    index === position ? redacted : message,
-  );
-
-  const next: Conversation = { ...conversation, messages, updatedAt: now };
+  const next: Conversation = {
+    ...conversation,
+    ids: [...conversation.ids],
+    messages: { ...conversation.messages, [redacted.id]: redacted },
+    updatedAt: now,
+  };
   return toReadonly(next);
 }
 
 /** Placeholder used when redacting sensitive data */
-const REDACTED = '[REDACTED]';
+const DEFAULT_REDACTED_PLACEHOLDER = '[REDACTED]';
 
 /**
  * Migrates a conversation JSON object to the current schema version.
  * Handles data from older versions that may not have a schemaVersion field.
  */
-export function migrateConversationJSON(json: unknown): ConversationJSON {
+export function migrateConversation(json: unknown): Conversation {
   // Handle non-object input
   if (typeof json !== 'object' || json === null || Array.isArray(json)) {
     return {
@@ -493,37 +582,76 @@ export function migrateConversationJSON(json: unknown): ConversationJSON {
       status: 'active',
       metadata: {},
       tags: [],
-      messages: [],
+      ids: [],
+      messages: {},
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
   }
 
-  const data = json as ConversationJSON;
+  const data = json as Conversation & { messages?: unknown };
+  const rawMessages = data.messages;
+  let messages: Record<string, Message> = {};
+  let ids: string[] = [];
+  const rawIds = (data as { ids?: unknown }).ids;
+  const isStringArray = (value: unknown): value is string[] =>
+    Array.isArray(value) && value.every((item) => typeof item === 'string');
+
+  if (Array.isArray(rawMessages)) {
+    const rawMessageArray = rawMessages as Message[];
+    ids = rawMessageArray.map((message) => message.id);
+    messages = Object.fromEntries(
+      rawMessageArray.map((message) => [message.id, message]),
+    );
+  } else if (rawMessages && typeof rawMessages === 'object') {
+    messages = { ...(rawMessages as Record<string, Message>) };
+    if (isStringArray(rawIds) && rawIds.length > 0) {
+      ids = [...rawIds];
+    } else {
+      ids = Object.values(messages)
+        .sort((a, b) => a.position - b.position)
+        .map((message) => message.id);
+    }
+  }
+
+  if (ids.length > 0) {
+    ids = ids.filter((id) => id in messages);
+    const missing = Object.keys(messages).filter((id) => !ids.includes(id));
+    if (missing.length > 0) {
+      const sortedMissing = missing.sort(
+        (a, b) => (messages[a]?.position ?? 0) - (messages[b]?.position ?? 0),
+      );
+      ids = [...ids, ...sortedMissing];
+    }
+  }
 
   // If no schemaVersion, assume pre-versioning data (version 0) and add it
   if (!('schemaVersion' in json)) {
     return {
       ...data,
       schemaVersion: CURRENT_SCHEMA_VERSION,
+      ids,
+      messages,
     };
   }
 
   // Future: add migration logic between versions here
-  return data;
+  return { ...data, ids, messages };
 }
 
 /**
- * Converts a conversation to a plain JSON-serializable object.
- * Creates deep copies of all nested objects to ensure immutability.
+ * Produces a sanitized clone of a conversation with optional redaction and metadata stripping.
+ * Conversations are already JSON-serializable; this helper makes export-safe copies.
  */
 export function serializeConversation(
   conversation: Conversation,
   options: SerializeOptions = {},
-): ConversationJSON {
+): Conversation {
   const {
-    deterministic = false,
     stripTransient = false,
+    includeHidden = true,
+    redactHiddenContent = false,
+    redactedPlaceholder = DEFAULT_REDACTED_PLACEHOLDER,
     redactToolArguments = false,
     redactToolResults = false,
   } = options;
@@ -535,58 +663,66 @@ export function serializeConversation(
   }
 
   // Process messages
-  let messages: MessageJSON[] = conversation.messages.map((m) => {
-    let msgMetadata = { ...m.metadata };
-    if (stripTransient) {
-      msgMetadata = stripTransientFromRecord(msgMetadata);
-    }
+  const messages: Message[] = getOrderedMessages(conversation)
+    .filter((message) => includeHidden || !message.hidden)
+    .map((m) => {
+      let msgMetadata = { ...m.metadata };
+      if (stripTransient) {
+        msgMetadata = stripTransientFromRecord(msgMetadata);
+      }
 
-    return {
-      id: m.id,
-      role: m.role,
-      content: copyContent(m.content),
-      position: m.position,
-      createdAt: m.createdAt,
-      metadata: msgMetadata,
-      hidden: m.hidden,
-      toolCall: m.toolCall
-        ? {
-            ...m.toolCall,
-            arguments: redactToolArguments ? REDACTED : m.toolCall.arguments,
-          }
-        : undefined,
-      toolResult: m.toolResult
-        ? {
-            ...m.toolResult,
-            content: redactToolResults ? REDACTED : m.toolResult.content,
-          }
-        : undefined,
-      tokenUsage: m.tokenUsage ? { ...m.tokenUsage } : undefined,
-      goalCompleted: m.goalCompleted,
-    };
-  });
+      const content =
+        redactHiddenContent && m.hidden ? redactedPlaceholder : copyContent(m.content);
 
-  // Sort messages if deterministic
-  if (deterministic) {
-    messages = sortMessagesByPosition(messages);
-  }
+      const baseMessage = {
+        id: m.id,
+        role: m.role,
+        content,
+        position: m.position,
+        createdAt: m.createdAt,
+        metadata: msgMetadata,
+        hidden: m.hidden,
+        toolCall: m.toolCall
+          ? {
+              ...m.toolCall,
+              arguments: redactToolArguments ? redactedPlaceholder : m.toolCall.arguments,
+            }
+          : undefined,
+        toolResult: m.toolResult
+          ? redactToolResults
+            ? redactToolResult(m.toolResult, redactedPlaceholder)
+            : copyToolResult(m.toolResult)
+          : undefined,
+        tokenUsage: m.tokenUsage ? { ...m.tokenUsage } : undefined,
+      };
 
-  let result: ConversationJSON = {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
+      if (isAssistantMessage(m)) {
+        const assistantMessage: AssistantMessage = {
+          ...baseMessage,
+          role: 'assistant',
+          goalCompleted: m.goalCompleted,
+        };
+        return assistantMessage;
+      }
+
+      return baseMessage;
+    });
+
+  const ids = messages.map((message) => message.id);
+  const messageRecord = toIdRecord(messages);
+
+  const result: Conversation = {
+    schemaVersion: conversation.schemaVersion,
     id: conversation.id,
     title: conversation.title,
     status: conversation.status,
     metadata,
     tags: [...conversation.tags],
-    messages,
+    ids,
+    messages: messageRecord,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
   };
-
-  // Sort keys if deterministic
-  if (deterministic) {
-    result = sortObjectKeys(result);
-  }
 
   return result;
 }
@@ -598,15 +734,22 @@ export function serializeConversation(
  */
 export function deserializeConversation(json: unknown): Conversation {
   // Migrate to current schema version
-  const migrated = migrateConversationJSON(json);
+  const migrated = migrateConversation(json);
 
   try {
-    migrated.messages.reduce<{ toolUses: ToolUseIndex }>(
-      (state, message, index) => {
-        if (message.position !== index) {
-          throw createInvalidPositionError(index, message.position);
-        }
+    const orderedMessages = migrated.ids.map((id, index) => {
+      const message = migrated.messages[id];
+      if (!message) {
+        throw createSerializationError(`missing message for id ${id}`);
+      }
+      if (message.position !== index) {
+        throw createInvalidPositionError(index, message.position);
+      }
+      return message;
+    });
 
+    orderedMessages.reduce<{ toolUses: ToolUseIndex }>(
+      (state, message) => {
         if (message.role === 'tool-use' && message.toolCall) {
           return {
             toolUses: registerToolUse(state.toolUses, message.toolCall),
@@ -622,14 +765,16 @@ export function deserializeConversation(json: unknown): Conversation {
       { toolUses: new Map<string, { name: string }>() },
     );
 
-    const messages: Message[] = migrated.messages.map((m) => createMessage(m));
+    const messageInstances: Message[] = orderedMessages.map((m) => createMessage(m));
     const conv: Conversation = {
+      schemaVersion: migrated.schemaVersion,
       id: migrated.id,
       title: migrated.title,
       status: migrated.status,
       metadata: { ...migrated.metadata },
       tags: [...migrated.tags],
-      messages,
+      ids: orderedMessages.map((message) => message.id),
+      messages: toIdRecord(messageInstances),
       createdAt: migrated.createdAt,
       updatedAt: migrated.updatedAt,
     };
@@ -644,6 +789,10 @@ export function deserializeConversation(json: unknown): Conversation {
   }
 }
 
+/**
+ * Converts a conversation into a provider-agnostic external message array.
+ * Hidden messages are skipped and roles are normalized.
+ */
 export function toChatMessages(conversation: Conversation): ExternalMessage[] {
   const roleMap: Record<string, 'user' | 'assistant' | 'system'> = {
     user: 'user',
@@ -656,7 +805,7 @@ export function toChatMessages(conversation: Conversation): ExternalMessage[] {
   };
 
   const result: ExternalMessage[] = [];
-  for (const message of conversation.messages) {
+  for (const message of getOrderedMessages(conversation)) {
     if (message.hidden) continue;
     const externalRole = roleMap[message.role] as 'user' | 'assistant' | 'system';
     result.push({

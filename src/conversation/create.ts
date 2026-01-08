@@ -2,7 +2,8 @@ import {
   type ConversationEnvironment,
   resolveConversationEnvironment,
 } from '../environment';
-import type { Conversation, ConversationStatus } from '../types';
+import type { Conversation, ConversationStatus, JSONValue } from '../types';
+import { CURRENT_SCHEMA_VERSION } from '../types';
 import { toReadonly } from '../utilities';
 
 /**
@@ -14,7 +15,7 @@ export function createConversation(
     id?: string;
     title?: string;
     status?: ConversationStatus;
-    metadata?: Record<string, unknown>;
+    metadata?: Record<string, JSONValue>;
     tags?: string[];
   },
   environment?: Partial<ConversationEnvironment>,
@@ -22,12 +23,14 @@ export function createConversation(
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
   const conv: Conversation = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     id: options?.id ?? resolvedEnvironment.randomId(),
     title: options?.title,
     status: options?.status ?? 'active',
     metadata: { ...(options?.metadata ?? {}) },
     tags: [...(options?.tags ?? [])],
-    messages: [],
+    ids: [],
+    messages: {},
     createdAt: now,
     updatedAt: now,
   };

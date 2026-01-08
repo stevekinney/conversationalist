@@ -14,6 +14,9 @@ export interface TextContent {
   text: string;
 }
 
+/**
+ * ImageContent is a convenience type for image parts in multi-modal content.
+ */
 export interface ImageContent {
   type: 'image';
   url: string;

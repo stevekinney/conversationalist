@@ -1,6 +1,7 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
 import type { Conversation, Message, ToolCall, ToolResult } from '../../types';
+import { getOrderedMessages } from '../../utilities/message-store';
 
 /**
  * Anthropic text content block.
@@ -13,14 +14,22 @@ export interface AnthropicTextBlock {
 /**
  * Anthropic image content block.
  */
+export interface AnthropicBase64ImageSource {
+  type: 'base64';
+  media_type: string;
+  data: string;
+}
+
+export interface AnthropicUrlImageSource {
+  type: 'url';
+  url: string;
+}
+
+export type AnthropicImageSource = AnthropicBase64ImageSource | AnthropicUrlImageSource;
+
 export interface AnthropicImageBlock {
   type: 'image';
-  source: {
-    type: 'base64' | 'url';
-    media_type?: string;
-    data?: string;
-    url?: string;
-  };
+  source: AnthropicImageSource;
 }
 
 /**
@@ -196,7 +205,8 @@ function extractSystemContent(messages: ReadonlyArray<Message>): string | undefi
  * ```
  */
 export function toAnthropicMessages(conversation: Conversation): AnthropicConversation {
-  const system = extractSystemContent(conversation.messages);
+  const ordered = getOrderedMessages(conversation);
+  const system = extractSystemContent(ordered);
   const messages: AnthropicMessage[] = [];
 
   // Track pending content blocks to merge consecutive same-role messages
@@ -217,7 +227,7 @@ export function toAnthropicMessages(conversation: Conversation): AnthropicConver
     currentRole = null;
   };
 
-  for (const message of conversation.messages) {
+  for (const message of ordered) {
     if (message.hidden) continue;
 
     // Skip system messages (already extracted)

@@ -652,6 +652,7 @@ describe('Gemini Adapter', () => {
 
       expect(parts[0].fileData).toBeDefined();
       expect(parts[0].fileData.fileUri).toBe('https://example.com/image.jpg');
+      expect(parts[0].fileData.mimeType).toBe('image/jpeg');
     });
 
     it('handles file URIs without mimeType', () => {
@@ -670,7 +671,7 @@ describe('Gemini Adapter', () => {
 
       expect(parts[0].fileData).toBeDefined();
       expect(parts[0].fileData.fileUri).toBe('https://example.com/image.jpg');
-      expect(parts[0].fileData.mimeType).toBeUndefined();
+      expect(parts[0].fileData.mimeType).toBe('image/jpeg');
     });
 
     it('handles tool call with invalid JSON arguments', () => {
@@ -737,23 +738,25 @@ describe('Gemini Adapter', () => {
     it('handles tool results with missing tool call names', () => {
       // Create a conversation with a tool result but no tool-use message
       // We have to bypass appendMessages validation, so we'll mock the conversation structure
+      const message = {
+        id: 'm1',
+        role: 'tool-result' as const,
+        content: '',
+        position: 0,
+        createdAt: '2024-01-01T00:00:00.000Z',
+        metadata: {},
+        hidden: false,
+        toolResult: { callId: 'unknown-id', outcome: 'success' as const, content: 'done' },
+      };
+
       const conv: Conversation = {
+        schemaVersion: 1,
         id: 'test',
         status: 'active',
         metadata: {},
         tags: [],
-        messages: [
-          {
-            id: 'm1',
-            role: 'tool-result',
-            content: '',
-            position: 0,
-            createdAt: '2024-01-01T00:00:00.000Z',
-            metadata: {},
-            hidden: false,
-            toolResult: { callId: 'unknown-id', outcome: 'success', content: 'done' },
-          },
-        ],
+        ids: [message.id],
+        messages: { [message.id]: message },
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
       };

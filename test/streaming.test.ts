@@ -9,6 +9,12 @@ import {
   isStreamingMessage,
   updateStreamingMessage,
 } from '../src/streaming';
+import type { Conversation, Message } from '../src/types';
+
+const getOrderedMessages = (conversation: Conversation): Message[] =>
+  conversation.ids
+    .map((id) => conversation.messages[id])
+    .filter((message): message is Message => Boolean(message));
 
 const testEnvironment = {
   now: () => '2024-01-01T00:00:00.000Z',
@@ -29,9 +35,9 @@ describe('appendStreamingMessage', () => {
     );
 
     expect(messageId).toMatch(/^test-id-\d+$/);
-    expect(conversation.messages).toHaveLength(1);
-    expect(conversation.messages[0]?.role).toBe('assistant');
-    expect(conversation.messages[0]?.content).toBe('');
+    expect(conversation.ids).toHaveLength(1);
+    expect(getOrderedMessages(conversation)[0]?.role).toBe('assistant');
+    expect(getOrderedMessages(conversation)[0]?.content).toBe('');
   });
 
   it('marks message as streaming via metadata', () => {
@@ -43,7 +49,7 @@ describe('appendStreamingMessage', () => {
       testEnvironment,
     );
 
-    expect(isStreamingMessage(conversation.messages[0]!)).toBe(true);
+    expect(isStreamingMessage(getOrderedMessages(conversation)[0]!)).toBe(true);
   });
 
   it('preserves custom metadata', () => {
@@ -55,7 +61,7 @@ describe('appendStreamingMessage', () => {
       testEnvironment,
     );
 
-    expect(conversation.messages[0]?.metadata.custom).toBe('value');
+    expect(getOrderedMessages(conversation)[0]?.metadata.custom).toBe('value');
   });
 });
 
@@ -75,7 +81,7 @@ describe('updateStreamingMessage', () => {
       'Hello',
       testEnvironment,
     );
-    expect(updated.messages[0]?.content).toBe('Hello');
+    expect(getOrderedMessages(updated)[0]?.content).toBe('Hello');
   });
 
   it('replaces content on each update (for accumulation)', () => {
@@ -95,7 +101,7 @@ describe('updateStreamingMessage', () => {
     );
     updated = updateStreamingMessage(updated, messageId, 'Hello world', testEnvironment);
 
-    expect(updated.messages[0]?.content).toBe('Hello world');
+    expect(getOrderedMessages(updated)[0]?.content).toBe('Hello world');
   });
 
   it('returns unchanged conversation for unknown message ID', () => {
@@ -132,7 +138,7 @@ describe('updateStreamingMessage', () => {
       testEnvironment,
     );
 
-    expect(Array.isArray(updated.messages[0]?.content)).toBe(true);
+    expect(Array.isArray(getOrderedMessages(updated)[0]?.content)).toBe(true);
   });
 });
 
@@ -152,7 +158,7 @@ describe('finalizeStreamingMessage', () => {
       undefined,
       testEnvironment,
     );
-    expect(isStreamingMessage(finalized.messages[0]!)).toBe(false);
+    expect(isStreamingMessage(getOrderedMessages(finalized)[0]!)).toBe(false);
   });
 
   it('adds token usage when provided', () => {
@@ -171,7 +177,7 @@ describe('finalizeStreamingMessage', () => {
       testEnvironment,
     );
 
-    expect(finalized.messages[0]?.tokenUsage).toEqual({
+    expect(getOrderedMessages(finalized)[0]?.tokenUsage).toEqual({
       prompt: 10,
       completion: 20,
       total: 30,
@@ -194,8 +200,8 @@ describe('finalizeStreamingMessage', () => {
       testEnvironment,
     );
 
-    expect(finalized.messages[0]?.metadata.original).toBe(true);
-    expect(finalized.messages[0]?.metadata.finalized).toBe(true);
+    expect(getOrderedMessages(finalized)[0]?.metadata.original).toBe(true);
+    expect(getOrderedMessages(finalized)[0]?.metadata.finalized).toBe(true);
   });
 
   it('returns unchanged conversation for unknown message ID', () => {
@@ -228,7 +234,7 @@ describe('cancelStreamingMessage', () => {
     );
 
     const cancelled = cancelStreamingMessage(conversation, messageId, testEnvironment);
-    expect(cancelled.messages).toHaveLength(0);
+    expect(cancelled.ids).toHaveLength(0);
   });
 
   it('renumbers remaining messages', async () => {
@@ -254,7 +260,7 @@ describe('cancelStreamingMessage', () => {
     const cancelled = cancelStreamingMessage(withMore, messageId, testEnvironment);
 
     // Positions should be renumbered
-    cancelled.messages.forEach((m, i) => {
+    getOrderedMessages(cancelled).forEach((m, i) => {
       expect(m.position).toBe(i);
     });
   });
@@ -283,7 +289,7 @@ describe('isStreamingMessage', () => {
       testEnvironment,
     );
 
-    expect(isStreamingMessage(conversation.messages[0]!)).toBe(true);
+    expect(isStreamingMessage(getOrderedMessages(conversation)[0]!)).toBe(true);
   });
 
   it('returns false for non-streaming messages', async () => {
@@ -291,7 +297,7 @@ describe('isStreamingMessage', () => {
     let conv = createConversation({ id: 'test' }, testEnvironment);
     conv = appendMessages(conv, { role: 'user', content: 'Hello' }, testEnvironment);
 
-    expect(isStreamingMessage(conv.messages[0]!)).toBe(false);
+    expect(isStreamingMessage(getOrderedMessages(conv)[0]!)).toBe(false);
   });
 
   it('returns false for finalized streaming messages', () => {
@@ -309,7 +315,7 @@ describe('isStreamingMessage', () => {
       testEnvironment,
     );
 
-    expect(isStreamingMessage(finalized.messages[0]!)).toBe(false);
+    expect(isStreamingMessage(getOrderedMessages(finalized)[0]!)).toBe(false);
   });
 });
 

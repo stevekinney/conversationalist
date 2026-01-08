@@ -17,9 +17,16 @@ async function build() {
   // Entry points to build
   const entryPoints = [
     { entry: './src/index.ts', outdir: 'dist' },
+    { entry: './src/markdown/index.ts', outdir: 'dist/markdown' },
+    { entry: './src/export/index.ts', outdir: 'dist/export' },
+    { entry: './src/schemas/index.ts', outdir: 'dist/schemas' },
     { entry: './src/adapters/openai/index.ts', outdir: 'dist/adapters/openai' },
     { entry: './src/adapters/anthropic/index.ts', outdir: 'dist/adapters/anthropic' },
     { entry: './src/adapters/gemini/index.ts', outdir: 'dist/adapters/gemini' },
+    { entry: './src/plugins/index.ts', outdir: 'dist/plugins' },
+    { entry: './src/redaction/index.ts', outdir: 'dist/redaction' },
+    { entry: './src/versioning/index.ts', outdir: 'dist/versioning' },
+    { entry: './src/sort/index.ts', outdir: 'dist/sort' },
   ];
 
   // Build JavaScript with Bun (target node for npm compatibility)

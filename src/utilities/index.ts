@@ -4,23 +4,12 @@ export type { ToMarkdownOptions } from '../types';
 // Content normalization
 export { normalizeContent, toMultiModalArray } from './content';
 
-// Deterministic output
-export { sortMessagesByPosition, sortObjectKeys } from './deterministic';
-
-// Markdown conversion
-export {
-  fromMarkdown,
-  getRoleFromLabel,
-  getRoleLabel,
-  LABEL_TO_ROLE,
-  MarkdownParseError,
-  ROLE_LABELS,
-  toMarkdown,
-} from './markdown';
+// Markdown conversion is exported via `conversationalist/markdown`
 
 // Message utilities
 export {
   createMessage,
+  isAssistantMessage,
   messageHasImages,
   messageParts,
   messageText,

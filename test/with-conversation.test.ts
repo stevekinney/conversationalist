@@ -7,7 +7,13 @@ import {
   createConversation,
 } from '../src/conversation';
 import { isStreamingMessage } from '../src/streaming';
+import type { Conversation, Message } from '../src/types';
 import { pipeConversation, withConversation } from '../src/with-conversation';
+
+const getOrderedMessages = (conversation: Conversation): Message[] =>
+  conversation.ids
+    .map((id) => conversation.messages[id])
+    .filter((message): message is Message => Boolean(message));
 
 describe('withConversation', () => {
   test('chains mutating methods and returns immutable conversation', () => {
@@ -22,8 +28,9 @@ describe('withConversation', () => {
 
     // Synchronous path returns Conversation
     expect(result.createdAt).toBeDefined();
-    expect(result.messages.length).toBe(4);
-    expect(result.messages[1]!.content).toBe('[REDACTED]');
+    const messages = getOrderedMessages(result);
+    expect(messages.length).toBe(4);
+    expect(messages[1]!.content).toBe('[REDACTED]');
 
     expect(result).not.toBe(base);
   });
@@ -36,8 +43,9 @@ describe('withConversation', () => {
     });
 
     const result = await resultPromise;
-    expect(result.messages.length).toBe(1);
-    expect(result.messages[0]!.role).toBe('user');
+    const messages = getOrderedMessages(result);
+    expect(messages.length).toBe(1);
+    expect(messages[0]!.role).toBe('user');
   });
 
   test('exposes system message helpers on the draft', () => {
@@ -52,7 +60,9 @@ describe('withConversation', () => {
         .collapseSystemMessages();
     });
 
-    const systemMessages = result.messages.filter((m) => m.role === 'system');
+    const systemMessages = getOrderedMessages(result).filter(
+      (m) => m.role === 'system',
+    );
     expect(systemMessages.length).toBe(1);
     expect(systemMessages[0]!.content).toBe('Intro v2\nFirst\nSecond');
   });
@@ -67,10 +77,11 @@ describe('pipeConversation', () => {
       (conv) => appendAssistantMessage(conv, 'hello'),
     );
 
-    expect(piped.messages.length).toBe(2);
-    expect(piped.messages[0]!.role).toBe('user');
-    expect(piped.messages[1]!.role).toBe('assistant');
-    expect(base.messages.length).toBe(0);
+    const pipedMessages = getOrderedMessages(piped);
+    expect(pipedMessages.length).toBe(2);
+    expect(pipedMessages[0]!.role).toBe('user');
+    expect(pipedMessages[1]!.role).toBe('assistant');
+    expect(base.ids.length).toBe(0);
   });
 });
 
@@ -86,9 +97,10 @@ describe('withConversation streaming support', () => {
     });
 
     expect(capturedId).toBeDefined();
-    expect(result.messages.length).toBe(1);
-    expect(result.messages[0]!.content).toBe('Hello...');
-    expect(isStreamingMessage(result.messages[0]!)).toBe(true);
+    const messages = getOrderedMessages(result);
+    expect(messages.length).toBe(1);
+    expect(messages[0]!.content).toBe('Hello...');
+    expect(isStreamingMessage(messages[0]!)).toBe(true);
   });
 
   test('finalizeStreamingMessage removes streaming flag', () => {
@@ -103,10 +115,11 @@ describe('withConversation streaming support', () => {
         });
     });
 
-    expect(result.messages.length).toBe(1);
-    expect(result.messages[0]!.content).toBe('Complete response');
-    expect(isStreamingMessage(result.messages[0]!)).toBe(false);
-    expect(result.messages[0]!.tokenUsage?.total).toBe(15);
+    const messages = getOrderedMessages(result);
+    expect(messages.length).toBe(1);
+    expect(messages[0]!.content).toBe('Complete response');
+    expect(isStreamingMessage(messages[0]!)).toBe(false);
+    expect(messages[0]!.tokenUsage?.total).toBe(15);
   });
 
   test('cancelStreamingMessage removes the message', () => {
@@ -118,8 +131,9 @@ describe('withConversation streaming support', () => {
       draft.cancelStreamingMessage(messageId);
     });
 
-    expect(result.messages.length).toBe(1);
-    expect(result.messages[0]!.role).toBe('user');
+    const messages = getOrderedMessages(result);
+    expect(messages.length).toBe(1);
+    expect(messages[0]!.role).toBe('user');
   });
 });
 
@@ -135,9 +149,10 @@ describe('withConversation context window management', () => {
         .truncateFromPosition(2);
     });
 
-    expect(result.messages.length).toBe(2);
-    expect(result.messages[0]!.content).toBe('Message 2');
-    expect(result.messages[1]!.content).toBe('Message 3');
+    const messages = getOrderedMessages(result);
+    expect(messages.length).toBe(2);
+    expect(messages[0]!.content).toBe('Message 2');
+    expect(messages[1]!.content).toBe('Message 3');
   });
 
   test('truncateFromPosition preserves system messages by default', () => {
@@ -151,9 +166,10 @@ describe('withConversation context window management', () => {
         .truncateFromPosition(3);
     });
 
-    expect(result.messages.length).toBe(2);
-    expect(result.messages[0]!.role).toBe('system');
-    expect(result.messages[1]!.content).toBe('Message 3');
+    const messages = getOrderedMessages(result);
+    expect(messages.length).toBe(2);
+    expect(messages[0]!.role).toBe('system');
+    expect(messages[1]!.content).toBe('Message 3');
   });
 
   test('truncateToTokenLimit removes oldest messages to fit limit', () => {
@@ -167,7 +183,7 @@ describe('withConversation context window management', () => {
         .truncateToTokenLimit(10, { estimateTokens: simpleTokenEstimator });
     });
 
-    expect(result.messages.length).toBeLessThan(4);
+    expect(getOrderedMessages(result).length).toBeLessThan(4);
   });
 
   test('truncateToTokenLimit preserves last N messages', () => {
@@ -184,7 +200,7 @@ describe('withConversation context window management', () => {
         });
     });
 
-    const lastTwo = result.messages.slice(-2);
+    const lastTwo = getOrderedMessages(result).slice(-2);
     expect(lastTwo[0]!.content).toBe('New message');
     expect(lastTwo[1]!.content).toBe('New response');
   });

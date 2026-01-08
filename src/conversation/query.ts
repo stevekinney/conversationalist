@@ -1,18 +1,18 @@
 import type { Conversation, Message } from '../types';
 import { messageHasImages } from '../utilities';
+import { getOrderedMessages } from '../utilities/message-store';
 
 /**
- * Returns all messages from a conversation.
+ * Returns all messages from a conversation in order.
  * By default excludes hidden messages unless includeHidden is true.
  */
-export function getConversationMessages(
+export function getMessages(
   conversation: Conversation,
   options?: { includeHidden?: boolean },
-): ReadonlyArray<Message> {
+): Message[] {
   const includeHidden = options?.includeHidden ?? false;
-  return includeHidden
-    ? [...conversation.messages]
-    : conversation.messages.filter((m) => !m.hidden);
+  const ordered = getOrderedMessages(conversation);
+  return includeHidden ? ordered : ordered.filter((m) => !m.hidden);
 }
 
 /**
@@ -23,18 +23,26 @@ export function getMessageAtPosition(
   conversation: Conversation,
   position: number,
 ): Message | undefined {
-  return conversation.messages[position];
+  const id = conversation.ids[position];
+  return id ? conversation.messages[id] : undefined;
+}
+
+/**
+ * Returns all message IDs for the conversation in order.
+ */
+export function getMessageIds(conversation: Conversation): string[] {
+  return [...conversation.ids];
 }
 
 /**
  * Finds a message by its unique identifier.
  * Returns undefined if no message with that ID exists.
  */
-export function getMessageByIdentifier(
+export function getMessageById(
   conversation: Conversation,
   id: string,
 ): Message | undefined {
-  return conversation.messages.find((m) => m.id === id);
+  return conversation.messages[id];
 }
 
 /**
@@ -45,20 +53,21 @@ export function searchConversationMessages(
   conversation: Conversation,
   predicate: (m: Message) => boolean,
 ): Message[] {
-  return conversation.messages.filter(predicate);
+  return getOrderedMessages(conversation).filter(predicate);
 }
 
 /**
  * Computes statistics about a conversation's messages.
  * Returns totals, counts by role, hidden message count, and image count.
  */
-export function computeConversationStatistics(conversation: Conversation): {
+export function getStatistics(conversation: Conversation): {
   total: number;
   byRole: Record<string, number>;
   hidden: number;
   withImages: number;
 } {
-  const stats = conversation.messages.reduce(
+  const ordered = getOrderedMessages(conversation);
+  const stats = ordered.reduce(
     (acc, message) => {
       const byRole = {
         ...acc.byRole,
@@ -73,5 +82,5 @@ export function computeConversationStatistics(conversation: Conversation): {
     },
     { byRole: {} as Record<string, number>, hidden: 0, withImages: 0 },
   );
-  return { total: conversation.messages.length, ...stats };
+  return { total: ordered.length, ...stats };
 }

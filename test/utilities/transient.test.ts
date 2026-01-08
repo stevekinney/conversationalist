@@ -1,11 +1,27 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { Conversation } from '../../src/types';
+import type { Conversation, Message } from '../../src/types';
 import {
   isTransientKey,
   stripTransientFromRecord,
   stripTransientMetadata,
 } from '../../src/utilities/transient';
+
+type ConversationOverrides = Partial<Omit<Conversation, 'messages' | 'ids'>> & {
+  messages?: Message[];
+  ids?: string[];
+};
+
+const getOrderedMessages = (conversation: Conversation): Message[] =>
+  conversation.ids
+    .map((id) => conversation.messages[id])
+    .filter((message): message is Message => Boolean(message));
+
+const toMessageRecord = (messages: Message[]): Record<string, Message> =>
+  messages.reduce<Record<string, Message>>((acc, message) => {
+    acc[message.id] = message;
+    return acc;
+  }, {});
 
 describe('transient utilities', () => {
   describe('isTransientKey', () => {
@@ -58,17 +74,24 @@ describe('transient utilities', () => {
 
   describe('stripTransientMetadata', () => {
     const createConversation = (
-      overrides: Partial<Conversation> = {},
-    ): Conversation => ({
-      id: 'conv-1',
-      status: 'active',
-      metadata: {},
-      tags: [],
-      messages: [],
-      createdAt: '2024-01-15T10:00:00.000Z',
-      updatedAt: '2024-01-15T10:00:00.000Z',
-      ...overrides,
-    });
+      overrides: ConversationOverrides = {},
+    ): Conversation => {
+      const { messages = [], ids, ...rest } = overrides;
+      const baseIds = ids ?? messages.map((message) => message.id);
+
+      return {
+        schemaVersion: 1,
+        id: 'conv-1',
+        status: 'active',
+        metadata: {},
+        tags: [],
+        createdAt: '2024-01-15T10:00:00.000Z',
+        updatedAt: '2024-01-15T10:00:00.000Z',
+        ...rest,
+        messages: toMessageRecord(messages),
+        ids: baseIds,
+      };
+    };
 
     test('strips transient metadata from conversation', () => {
       const conversation = createConversation({
@@ -107,8 +130,9 @@ describe('transient utilities', () => {
 
       const result = stripTransientMetadata(conversation);
 
-      expect(result.messages[0].metadata).toEqual({ source: 'keyboard' });
-      expect(result.messages[1].metadata).toEqual({ model: 'gpt-4' });
+      const ordered = getOrderedMessages(result);
+      expect(ordered[0]?.metadata).toEqual({ source: 'keyboard' });
+      expect(ordered[1]?.metadata).toEqual({ model: 'gpt-4' });
     });
 
     test('preserves all other conversation fields', () => {
@@ -138,8 +162,8 @@ describe('transient utilities', () => {
       expect(result.title).toBe('Test Conversation');
       expect(result.status).toBe('archived');
       expect(result.tags).toEqual(['important', 'work']);
-      expect(result.messages[0].content).toBe('Test');
-      expect(result.messages[0].tokenUsage).toEqual({
+      expect(getOrderedMessages(result)[0]?.content).toBe('Test');
+      expect(getOrderedMessages(result)[0]?.tokenUsage).toEqual({
         inputTokens: 10,
         outputTokens: 20,
       });
@@ -150,7 +174,8 @@ describe('transient utilities', () => {
       const result = stripTransientMetadata(conversation);
 
       expect(result.metadata).toEqual({});
-      expect(result.messages).toEqual([]);
+      expect(result.ids).toEqual([]);
+      expect(result.messages).toEqual({});
     });
 
     test('preserves toolCall and toolResult on messages', () => {
@@ -181,12 +206,12 @@ describe('transient utilities', () => {
 
       const result = stripTransientMetadata(conversation);
 
-      expect(result.messages[0].toolCall).toEqual({
+      expect(getOrderedMessages(result)[0]?.toolCall).toEqual({
         id: 'call-1',
         name: 'search',
         arguments: '{}',
       });
-      expect(result.messages[1].toolResult).toEqual({
+      expect(getOrderedMessages(result)[1]?.toolResult).toEqual({
         callId: 'call-1',
         content: 'Success',
       });

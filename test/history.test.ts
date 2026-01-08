@@ -2,13 +2,19 @@ import { describe, expect, expectTypeOf, it } from 'bun:test';
 
 import {
   appendUserMessage,
-  bindToConversationHistory,
-  computeConversationStatistics,
   ConversationHistory,
   createConversation,
   estimateConversationTokens,
+  getStatistics,
   truncateToTokenLimit,
 } from '../src';
+import { historyFromMarkdown, historyToMarkdown } from '../src/markdown';
+import type { Conversation, Message } from '../src/types';
+
+const getOrderedMessages = (conversation: Conversation): Message[] =>
+  conversation.ids
+    .map((id) => conversation.messages[id])
+    .filter((message): message is Message => Boolean(message));
 
 describe('ConversationHistory', () => {
   it('should implement EventTarget', () => {
@@ -27,7 +33,7 @@ describe('ConversationHistory', () => {
 
   it('should initialize with an empty conversation by default', () => {
     const history = new ConversationHistory();
-    expect(history.current.messages).toHaveLength(0);
+    expect(history.current.ids).toHaveLength(0);
     expect(history.current.status).toBe('active');
     expect(history.canUndo).toBe(false);
   });
@@ -112,32 +118,25 @@ describe('ConversationHistory', () => {
     const boundAppend = history.bind(appendUserMessage);
 
     boundAppend('Hello');
-    expect(history.current.messages.length).toBe(1);
-    expect(history.current.messages[0].content).toBe('Hello');
+    const afterFirst = getOrderedMessages(history.current);
+    expect(afterFirst.length).toBe(1);
+    expect(afterFirst[0].content).toBe('Hello');
 
     boundAppend('World');
-    expect(history.current.messages.length).toBe(2);
+    expect(history.current.ids.length).toBe(2);
     expect(history.canUndo).toBe(true);
 
     history.undo();
-    expect(history.current.messages.length).toBe(1);
+    expect(history.current.ids.length).toBe(1);
   });
 
   it('should bind functions that do not return a conversation without pushing', () => {
     const history = new ConversationHistory(createConversation());
-    const boundStats = history.bind(computeConversationStatistics);
+    const boundStats = history.bind(getStatistics);
 
     const stats = boundStats();
     expect(stats.total).toBe(0);
-    expect(history.current.messages.length).toBe(0); // Should not have pushed
-  });
-
-  it('should work with bindToConversationHistory utility', () => {
-    const history = new ConversationHistory(createConversation());
-    const boundAppend = bindToConversationHistory(history, appendUserMessage);
-
-    boundAppend('Hello');
-    expect(history.current.messages.length).toBe(1);
+    expect(history.current.ids.length).toBe(0); // Should not have pushed
   });
 
   it('should not push non-conformant objects to history', () => {
@@ -196,7 +195,7 @@ describe('ConversationHistory', () => {
     // Truncate to 150 should leave 1 message.
 
     boundTruncate(150);
-    expect(history.current.messages.length).toBe(1);
+    expect(history.current.ids.length).toBe(1);
   });
 
   it('should use custom token estimator from environment for estimateConversationTokens when bound', () => {
@@ -250,41 +249,46 @@ describe('ConversationHistory', () => {
       expect(history.getStatistics().total).toBe(1);
       expect(history.serialize().title).toBe('Query');
       expect(history.toChatMessages()).toHaveLength(1);
-      expect(history.toMarkdown()).toContain('### User');
-      expect(history.toMarkdown({ includeMetadata: true })).toContain('---');
+      expect(historyToMarkdown(history)).toContain('### User');
+      expect(historyToMarkdown(history, { includeMetadata: true })).toContain('---');
 
-      const restored = ConversationHistory.fromMarkdown(
-        history.toMarkdown({ includeMetadata: true }),
+      const restored = historyFromMarkdown(
+        historyToMarkdown(history, { includeMetadata: true }),
       );
-      expect(restored.current.messages).toHaveLength(1);
-      expect(restored.current.messages[0].content).toBe('Hello');
+      const restoredMessages = getOrderedMessages(restored.current);
+      expect(restoredMessages).toHaveLength(1);
+      expect(restoredMessages[0].content).toBe('Hello');
       expect(history.estimateTokens()).toBeGreaterThan(0);
       expect(history.getRecentMessages(1)).toHaveLength(1);
       expect(history.hasSystemMessage()).toBe(false);
       expect(history.getFirstSystemMessage()).toBeUndefined();
       expect(history.getSystemMessages()).toHaveLength(0);
       expect(history.searchMessages((m) => m.role === 'user')).toHaveLength(1);
-      expect(history.getMessageByIdentifier(conv.messages[0].id)).toBeDefined();
+      const convMessages = getOrderedMessages(conv);
+      expect(history.getMessageById(convMessages[0].id)).toBeDefined();
+      expect(history.get(convMessages[0].id)).toBeDefined();
+      expect(history.getMessageIds()).toEqual(conv.ids);
+      expect(history.ids).toEqual(conv.ids);
     });
 
     it('should support mutation methods', () => {
       const history = new ConversationHistory(createConversation());
 
       history.appendMessages({ role: 'user', content: 'First' });
-      expect(history.current.messages.length).toBe(1);
+      expect(history.current.ids.length).toBe(1);
 
       history.appendUserMessage('User msg');
-      expect(history.current.messages.length).toBe(2);
+      expect(history.current.ids.length).toBe(2);
       expect(history.canUndo).toBe(true);
 
       history.appendAssistantMessage('Assistant msg');
-      expect(history.current.messages.length).toBe(3);
+      expect(history.current.ids.length).toBe(3);
 
       history.appendSystemMessage('System msg');
-      expect(history.current.messages.length).toBe(4);
+      expect(history.current.ids.length).toBe(4);
 
       history.prependSystemMessage('First system');
-      expect(history.current.messages[0].content).toBe('First system');
+      expect(getOrderedMessages(history.current)[0].content).toBe('First system');
 
       history.replaceSystemMessage('New system');
       expect(history.getFirstSystemMessage()?.content).toBe('New system');
@@ -296,10 +300,10 @@ describe('ConversationHistory', () => {
       expect(history.getMessageAtPosition(1)?.content).toBe('[REDACTED]');
 
       history.truncateFromPosition(1);
-      expect(history.current.messages.length).toBe(4); // system + messages from pos 1
+      expect(history.current.ids.length).toBe(4); // system + messages from pos 1
 
       history.truncateToTokenLimit(10);
-      expect(history.current.messages.length).toBeLessThan(4);
+      expect(history.current.ids.length).toBeLessThan(4);
     });
 
     it('should support streaming mutation methods', () => {
@@ -309,17 +313,17 @@ describe('ConversationHistory', () => {
       expect(history.getStreamingMessage()?.id).toBe(messageId);
 
       history.updateStreamingMessage(messageId, 'Partial...');
-      expect(history.current.messages[0].content).toBe('Partial...');
+      expect(getOrderedMessages(history.current)[0].content).toBe('Partial...');
 
       history.finalizeStreamingMessage(messageId, {
         tokenUsage: { prompt: 1, completion: 1, total: 2 },
       });
       expect(history.getStreamingMessage()).toBeUndefined();
-      expect(history.current.messages[0].tokenUsage?.total).toBe(2);
+      expect(getOrderedMessages(history.current)[0].tokenUsage?.total).toBe(2);
 
       const nextId = history.appendStreamingMessage('user');
       history.cancelStreamingMessage(nextId);
-      expect(history.current.messages.length).toBe(1);
+      expect(history.current.ids.length).toBe(1);
     });
 
     it('should support serialization and deserialization of the full history tree', () => {
@@ -329,22 +333,24 @@ describe('ConversationHistory', () => {
       history.appendUserMessage('V2');
       history.appendAssistantMessage('V2-A');
 
-      const json = history.toJSON();
+      const json = history.snapshot();
       const restored = ConversationHistory.from(json);
 
       expect(restored.current.title).toBe('Root');
-      expect(restored.current.messages).toHaveLength(2);
-      expect(restored.current.messages[0].content).toBe('V2');
-      expect(restored.current.messages[1].content).toBe('V2-A');
+      const restoredMessages = getOrderedMessages(restored.current);
+      expect(restoredMessages).toHaveLength(2);
+      expect(restoredMessages[0].content).toBe('V2');
+      expect(restoredMessages[1].content).toBe('V2-A');
 
       restored.undo();
       restored.undo();
-      expect(restored.current.messages).toHaveLength(0);
+      expect(restored.current.ids).toHaveLength(0);
 
       // Check the other branch
       restored.redo(0);
-      expect(restored.current.messages).toHaveLength(1);
-      expect(restored.current.messages[0].content).toBe('V1');
+      const branchMessages = getOrderedMessages(restored.current);
+      expect(branchMessages).toHaveLength(1);
+      expect(branchMessages[0].content).toBe('V1');
     });
 
     it('should support EventTarget and dispatch events on mutations', () => {
@@ -416,11 +422,11 @@ describe('ConversationHistory', () => {
       expect(current?.id).toBe('test');
 
       history.appendUserMessage('new message');
-      expect(current?.messages.length).toBe(1);
+      expect(current?.ids.length).toBe(1);
 
       unsubscribe();
       history.appendUserMessage('another one');
-      expect(current?.messages.length).toBe(1);
+      expect(current?.ids.length).toBe(1);
     });
 
     it('should support getSnapshot for React useSyncExternalStore', () => {

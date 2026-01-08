@@ -4,6 +4,7 @@ import type {
 } from '@lasercat/homogenaize';
 
 import type { Conversation } from '../types';
+import { getOrderedMessages } from '../utilities/message-store';
 
 /**
  * Converts conversation messages to the external chat message format.
@@ -22,7 +23,7 @@ export function toChatMessages(conversation: Conversation): ExternalMessage[] {
   };
 
   const result: ExternalMessage[] = [];
-  for (const message of conversation.messages) {
+  for (const message of getOrderedMessages(conversation)) {
     if (message.hidden) continue;
     const externalRole = roleMap[message.role] as 'user' | 'assistant' | 'system';
     result.push({

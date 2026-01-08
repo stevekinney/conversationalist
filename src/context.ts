@@ -1,3 +1,5 @@
+import type { MultiModalContent } from '@lasercat/homogenaize';
+
 import {
   type ConversationEnvironment,
   isConversationEnvironmentParameter,
@@ -5,10 +7,41 @@ import {
   simpleTokenEstimator,
 } from './environment';
 import { copyContent } from './multi-modal';
-import type { Conversation, Message, TokenEstimator } from './types';
-import { createMessage, toReadonly } from './utilities';
+import type { AssistantMessage, Conversation, Message, TokenEstimator } from './types';
+import { createMessage, isAssistantMessage, toReadonly } from './utilities';
+import { getOrderedMessages, toIdRecord } from './utilities/message-store';
 
 export { simpleTokenEstimator };
+
+const cloneMessageWithPosition = (
+  message: Message,
+  position: number,
+  content: string | ReadonlyArray<MultiModalContent>,
+): Message => {
+  const baseMessage = {
+    id: message.id,
+    role: message.role,
+    content,
+    position,
+    createdAt: message.createdAt,
+    metadata: { ...message.metadata },
+    hidden: message.hidden,
+    toolCall: message.toolCall ? { ...message.toolCall } : undefined,
+    toolResult: message.toolResult ? { ...message.toolResult } : undefined,
+    tokenUsage: message.tokenUsage ? { ...message.tokenUsage } : undefined,
+  };
+
+  if (isAssistantMessage(message)) {
+    const assistantMessage: AssistantMessage = {
+      ...baseMessage,
+      role: 'assistant',
+      goalCompleted: message.goalCompleted,
+    };
+    return createMessage(assistantMessage);
+  }
+
+  return createMessage(baseMessage);
+};
 
 /**
  * Estimates total tokens in a conversation using the provided estimator function.
@@ -35,7 +68,7 @@ export function estimateConversationTokens(
   const finalEstimator =
     typeof estimator === 'function' ? estimator : resolvedEnvironment.estimateTokens;
 
-  return conversation.messages.reduce(
+  return getOrderedMessages(conversation).reduce(
     (total, message) => total + finalEstimator(message),
     0,
   );
@@ -110,11 +143,12 @@ export function truncateToTokenLimit(
   const now = resolvedEnvironment.now();
 
   // Separate messages into categories
+  const orderedMessages = getOrderedMessages(conversation);
   const systemMessages = preserveSystem
-    ? conversation.messages.filter((m) => m.role === 'system')
+    ? orderedMessages.filter((m) => m.role === 'system')
     : [];
 
-  const nonSystemMessages = conversation.messages.filter((m) => m.role !== 'system');
+  const nonSystemMessages = orderedMessages.filter((m) => m.role !== 'system');
 
   // Preserve the last N non-system messages
   const protectedMessages =
@@ -132,24 +166,13 @@ export function truncateToTokenLimit(
     // Can only fit system and protected messages
     const allMessages = [...systemMessages, ...protectedMessages];
     const renumbered = allMessages.map((message, index) =>
-      createMessage({
-        id: message.id,
-        role: message.role,
-        content: copyContent(message.content),
-        position: index,
-        createdAt: message.createdAt,
-        metadata: { ...message.metadata },
-        hidden: message.hidden,
-        toolCall: message.toolCall ? { ...message.toolCall } : undefined,
-        toolResult: message.toolResult ? { ...message.toolResult } : undefined,
-        tokenUsage: message.tokenUsage ? { ...message.tokenUsage } : undefined,
-        goalCompleted: message.goalCompleted,
-      }),
+      cloneMessageWithPosition(message, index, copyContent(message.content)),
     );
 
     return toReadonly({
       ...conversation,
-      messages: renumbered,
+      ids: renumbered.map((message) => message.id),
+      messages: toIdRecord(renumbered),
       updatedAt: now,
     });
   }
@@ -176,24 +199,13 @@ export function truncateToTokenLimit(
   allMessages.sort((a, b) => a.position - b.position);
 
   const renumbered = allMessages.map((message, index) =>
-    createMessage({
-      id: message.id,
-      role: message.role,
-      content: copyContent(message.content),
-      position: index,
-      createdAt: message.createdAt,
-      metadata: { ...message.metadata },
-      hidden: message.hidden,
-      toolCall: message.toolCall ? { ...message.toolCall } : undefined,
-      toolResult: message.toolResult ? { ...message.toolResult } : undefined,
-      tokenUsage: message.tokenUsage ? { ...message.tokenUsage } : undefined,
-      goalCompleted: message.goalCompleted,
-    }),
+    cloneMessageWithPosition(message, index, copyContent(message.content)),
   );
 
   return toReadonly({
     ...conversation,
-    messages: renumbered,
+    ids: renumbered.map((message) => message.id),
+    messages: toIdRecord(renumbered),
     updatedAt: now,
   });
 }
@@ -213,7 +225,7 @@ export function getRecentMessages(
   const includeHidden = options?.includeHidden ?? false;
   const includeSystem = options?.includeSystem ?? false;
 
-  const filtered = conversation.messages.filter((m) => {
+  const filtered = getOrderedMessages(conversation).filter((m) => {
     if (!includeHidden && m.hidden) return false;
     if (!includeSystem && m.role === 'system') return false;
     return true;
@@ -238,33 +250,23 @@ export function truncateFromPosition(
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
 
+  const ordered = getOrderedMessages(conversation);
   const systemMessages = preserveSystem
-    ? conversation.messages.filter((m) => m.role === 'system' && m.position < position)
+    ? ordered.filter((m) => m.role === 'system' && m.position < position)
     : [];
 
-  const keptMessages = conversation.messages.filter((m) => m.position >= position);
+  const keptMessages = ordered.filter((m) => m.position >= position);
   const allMessages = [...systemMessages, ...keptMessages];
 
   // Renumber positions
   const renumbered = allMessages.map((message, index) =>
-    createMessage({
-      id: message.id,
-      role: message.role,
-      content: copyContent(message.content),
-      position: index,
-      createdAt: message.createdAt,
-      metadata: { ...message.metadata },
-      hidden: message.hidden,
-      toolCall: message.toolCall ? { ...message.toolCall } : undefined,
-      toolResult: message.toolResult ? { ...message.toolResult } : undefined,
-      tokenUsage: message.tokenUsage ? { ...message.tokenUsage } : undefined,
-      goalCompleted: message.goalCompleted,
-    }),
+    cloneMessageWithPosition(message, index, copyContent(message.content)),
   );
 
   return toReadonly({
     ...conversation,
-    messages: renumbered,
+    ids: renumbered.map((message) => message.id),
+    messages: toIdRecord(renumbered),
     updatedAt: now,
   });
 }

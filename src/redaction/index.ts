@@ -3,4 +3,4 @@ export {
   createPIIRedactionPlugin,
   DEFAULT_PII_RULES,
   redactPii,
-} from './pii-redaction';
+} from '../plugins/pii-redaction';

@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { MessageJSON } from '../../src/types';
+import type { Message } from '../../src/types';
 import { pairToolCallsWithResults } from '../../src/utilities/tool-calls';
 
 describe('tool call pairing', () => {
-  const createMessage = (overrides: Partial<MessageJSON>): MessageJSON => ({
+  const createMessage = (overrides: Partial<Message>): Message => ({
     id: 'msg-1',
     role: 'user',
     content: '',
@@ -16,7 +16,7 @@ describe('tool call pairing', () => {
   });
 
   test('returns empty array for messages without tool calls', () => {
-    const messages: MessageJSON[] = [
+    const messages: Message[] = [
       createMessage({ id: 'msg-1', role: 'user', content: 'Hello' }),
       createMessage({ id: 'msg-2', role: 'assistant', content: 'Hi there' }),
     ];
@@ -26,7 +26,7 @@ describe('tool call pairing', () => {
   });
 
   test('pairs tool calls with their results', () => {
-    const messages: MessageJSON[] = [
+    const messages: Message[] = [
       createMessage({
         id: 'msg-1',
         role: 'tool-use',
@@ -48,7 +48,7 @@ describe('tool call pairing', () => {
   });
 
   test('handles tool calls without results (pending)', () => {
-    const messages: MessageJSON[] = [
+    const messages: Message[] = [
       createMessage({
         id: 'msg-1',
         role: 'tool-use',
@@ -63,7 +63,7 @@ describe('tool call pairing', () => {
   });
 
   test('handles multiple tool calls with mixed results', () => {
-    const messages: MessageJSON[] = [
+    const messages: Message[] = [
       createMessage({
         id: 'msg-1',
         role: 'tool-use',
@@ -92,7 +92,7 @@ describe('tool call pairing', () => {
 
   test('handles results that arrive before their calls in message order', () => {
     // This can happen if messages are not strictly ordered
-    const messages: MessageJSON[] = [
+    const messages: Message[] = [
       createMessage({
         id: 'msg-1',
         role: 'tool-result',
@@ -112,7 +112,7 @@ describe('tool call pairing', () => {
   });
 
   test('preserves order of tool calls', () => {
-    const messages: MessageJSON[] = [
+    const messages: Message[] = [
       createMessage({
         id: 'msg-1',
         role: 'tool-use',

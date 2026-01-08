@@ -25,7 +25,7 @@ Managing LLM conversations manually often leads to "provider lock-in" or fragile
 - **Decoupling Logic from Providers**: Write your business logic once using Conversationalist's message model, and use adapters to talk to OpenAI, Anthropic, or Gemini.
 - **Built-in Context Management**: Automatically handle context window limits by truncating history while preserving critical system instructions or recent messages.
 - **Type Safety Out-of-the-Box**: Built with Zod and TypeScript, ensuring that your conversation data is valid at runtime and compile-time.
-- **Unified Serialization**: One standard format (`ConversationJSON`) for your database, your frontend, and your backend.
+- **Unified Serialization**: One standard format (`Conversation`) for your database, your frontend, and your backend.
 
 ## The Immutable Advantage
 
@@ -92,7 +92,8 @@ const data = serializeConversation(conversation);
 
 ### Conversations
 
-A conversation is an immutable record with metadata, tags, timestamps, and ordered messages.
+A conversation is an immutable record with metadata, tags, timestamps, a `messages` record keyed
+by message ID, and an `ids` array that preserves order.
 
 ```ts
 import { createConversation } from 'conversationalist';
@@ -105,10 +106,17 @@ const conversation = createConversation({
 });
 ```
 
+Conversations track message order via `conversation.ids`. Every mutation keeps `ids` in sync
+with `messages`. Use `getMessages(conversation)` for ordered arrays, or
+`getMessageIds()` if you just need the IDs.
+
 ### Messages
 
 Messages have roles and can contain text or multi-modal content. Optional fields include
-`metadata`, `hidden`, `tokenUsage`, `toolCall`, `toolResult`, and `goalCompleted`.
+`metadata`, `hidden`, `tokenUsage`, `toolCall`, and `toolResult`. Assistant messages can also
+include `goalCompleted` (see `AssistantMessage`).
+Use `isAssistantMessage` to narrow when you need `goalCompleted`.
+Metadata and tool payloads are typed as `JSONValue` so conversations remain JSON-serializable.
 
 **Roles**: `user`, `assistant`, `system`, `developer`, `tool-use`, `tool-result`, `snapshot`.
 The `snapshot` role is for internal state and is skipped by adapters.
@@ -220,19 +228,15 @@ boundTruncate(4000); // Uses tiktokenEstimator automatically
 
 ### Markdown Conversion
 
-Convert conversations to human-readable Markdown format, or parse Markdown back into a conversation object.
+Convert conversations to human-readable Markdown format, or parse Markdown back into a conversation object. These helpers live in `conversationalist/markdown`.
 
 #### Basic Usage (Clean Markdown)
 
 By default, `toMarkdown` produces clean, readable Markdown without metadata:
 
 ```ts
-import {
-  toMarkdown,
-  fromMarkdown,
-  createConversation,
-  appendMessages,
-} from 'conversationalist';
+import { appendMessages, createConversation } from 'conversationalist';
+import { fromMarkdown, toMarkdown } from 'conversationalist/markdown';
 
 let conversation = createConversation({ id: 'conv-1' });
 conversation = appendMessages(
@@ -298,7 +302,7 @@ const markdown = toMarkdown(conversation, { includeMetadata: true });
 // Parse back with all metadata preserved
 const restored = fromMarkdown(markdown);
 // restored.id === 'conv-1'
-// restored.messages[0].id === 'msg-1'
+// restored.ids[0] === 'msg-1'
 ```
 
 #### Multi-Modal Content
@@ -326,18 +330,15 @@ const md = toMarkdown(conversation);
 
 ### PII Redaction Plugin
 
-The library includes a built-in `piiRedactionPlugin` that can automatically redact emails, phone numbers, and common API key patterns.
+The library includes a built-in `redactPii` plugin that can automatically redact emails, phone numbers, and common API key patterns.
 
 ```ts
-import {
-  appendUserMessage,
-  createConversation,
-  piiRedactionPlugin,
-} from 'conversationalist';
+import { appendUserMessage, createConversation, getMessages } from 'conversationalist';
+import { redactPii } from 'conversationalist/redaction';
 
 // 1. Enable by adding to your environment
 const env = {
-  plugins: [piiRedactionPlugin],
+  plugins: [redactPii],
 };
 
 // 2. Use the environment when appending messages
@@ -349,7 +350,7 @@ conversation = appendUserMessage(
   env,
 );
 
-console.log(conversation.messages[0].content);
+console.log(getMessages(conversation)[0]?.content);
 // "Contact me at [EMAIL_REDACTED]"
 ```
 
@@ -357,7 +358,7 @@ When using `ConversationHistory`, you only need to provide the plugin once durin
 
 ```ts
 const history = new ConversationHistory(createConversation(), {
-  plugins: [piiRedactionPlugin],
+  plugins: [redactPii],
 });
 
 const appendUser = history.bind(appendUserMessage);
@@ -374,6 +375,7 @@ import { toAnthropicMessages } from 'conversationalist/anthropic';
 import { toGeminiMessages } from 'conversationalist/gemini';
 ```
 
+- Adapter outputs are SDK-compatible (OpenAI `ChatCompletionMessageParam[]`, Anthropic `MessageParam[]`, Gemini `Content[]`).
 - **OpenAI**: Supports `toOpenAIMessages` and `toOpenAIMessagesGrouped` (which groups consecutive tool calls).
 - **Anthropic**: Maps system messages and tool blocks to Anthropic's specific format.
 - **Gemini**: Handles Gemini's unique content/part structure.
@@ -533,6 +535,8 @@ history.truncateToTokenLimit(4000);
 const messages = history.getMessages();
 const stats = history.getStatistics();
 const tokens = history.estimateTokens();
+const ids = history.ids;
+const firstMessage = history.get(ids[0]!);
 ```
 
 ### Event Subscription
@@ -587,10 +591,10 @@ history.undo();
 history.appendUserMessage('Path B');
 
 console.log(history.branchCount); // 2
-console.log(history.current.messages[0].content); // "Path B"
+console.log(history.getMessages()[0]?.content); // "Path B"
 
 history.switchToBranch(0);
-console.log(history.current.messages[0].content); // "Path A"
+console.log(history.getMessages()[0]?.content); // "Path A"
 ```
 
 ### Serialization
@@ -598,15 +602,15 @@ console.log(history.current.messages[0].content); // "Path A"
 You can serialize the entire history tree (including all branches) to JSON and reconstruct it later.
 
 ```ts
-// 1. Save to JSON
-const json = history.toJSON();
-// localStorage.setItem('chat_history', JSON.stringify(json));
+// 1. Capture a snapshot
+const snapshot = history.snapshot();
+// localStorage.setItem('chat_history', JSON.stringify(snapshot));
 
-// 2. Restore from JSON
-const restored = ConversationHistory.from(json);
+// 2. Restore from a snapshot
+const restored = ConversationHistory.from(snapshot);
 
 // You can also provide a new environment (e.g. with fresh token counters)
-const restoredWithEnv = ConversationHistory.from(json, {
+const restoredWithEnv = ConversationHistory.from(snapshot, {
   estimateTokens: myNewEstimator,
 });
 ```
@@ -615,18 +619,18 @@ const restoredWithEnv = ConversationHistory.from(json, {
 
 ### Schema Versioning
 
-Conversations include a `schemaVersion` field for forward compatibility. When loading older data, use `migrateConversationJSON` to upgrade it to the current schema:
+Conversations include a `schemaVersion` field for forward compatibility. When loading older data, use `migrateConversation` to upgrade it to the current schema:
 
 ```ts
+import { deserializeConversation } from 'conversationalist';
 import {
-  migrateConversationJSON,
-  deserializeConversation,
+  migrateConversation,
   CURRENT_SCHEMA_VERSION,
-} from 'conversationalist';
+} from 'conversationalist/versioning';
 
 // Old data without schemaVersion
 const legacyData = JSON.parse(oldStorage);
-const migrated = migrateConversationJSON(legacyData);
+const migrated = migrateConversation(legacyData);
 // migrated.schemaVersion === CURRENT_SCHEMA_VERSION
 
 const conversation = deserializeConversation(migrated);
@@ -634,17 +638,24 @@ const conversation = deserializeConversation(migrated);
 
 ### Serialization Options
 
-`serializeConversation` accepts options for controlling the output:
+`serializeConversation` accepts options for controlling the output. Conversations are already
+JSON-serializable; use this helper when you need redaction or transient stripping:
 
 ```ts
 import { serializeConversation } from 'conversationalist';
 
 const json = serializeConversation(conversation, {
-  // Sort keys and messages for stable, diff-friendly output
-  deterministic: true,
-
   // Remove metadata keys starting with '_' (transient UI state)
   stripTransient: true,
+
+  // Exclude hidden messages from export output
+  includeHidden: false,
+
+  // Replace hidden message content with a placeholder
+  redactHiddenContent: true,
+
+  // Placeholder used when redacting tool or hidden content
+  redactedPlaceholder: '[REDACTED]',
 
   // Replace tool arguments with '[REDACTED]'
   redactToolArguments: true,
@@ -652,6 +663,10 @@ const json = serializeConversation(conversation, {
   // Replace tool result content with '[REDACTED]'
   redactToolResults: true,
 });
+
+These options line up with the markdown export options where applicable (`toMarkdown`
+and `exportMarkdown`). Conversation output is already deterministic thanks to immutable
+state and ordered `ids`.
 ```
 
 ### Transient Metadata Convention
@@ -677,12 +692,12 @@ stripTransientFromRecord({ _loading: true, source: 'web' });
 const cleaned = stripTransientMetadata(conversation);
 ```
 
-### Deterministic Output
+### Sort Utilities
 
-For reproducible snapshots or tests, use the deterministic utilities:
+For reproducible snapshots or tests, use the sort utilities:
 
 ```ts
-import { sortObjectKeys, sortMessagesByPosition } from 'conversationalist';
+import { sortObjectKeys, sortMessagesByPosition } from 'conversationalist/sort';
 
 // Sort object keys alphabetically (recursive)
 const sorted = sortObjectKeys({ z: 1, a: 2, nested: { b: 3, a: 4 } });
@@ -702,7 +717,7 @@ import {
   LABEL_TO_ROLE,
   getRoleLabel,
   getRoleFromLabel,
-} from 'conversationalist';
+} from 'conversationalist/markdown';
 
 // Get display label for a role
 getRoleLabel('tool-use'); // 'Tool Use'
@@ -722,8 +737,13 @@ LABEL_TO_ROLE['System']; // 'system'
 You can also convert a conversation to Markdown format for human-readable storage or export, and restore it later.
 
 ```ts
+import { ConversationHistory } from 'conversationalist';
+import { historyFromMarkdown, historyToMarkdown } from 'conversationalist/markdown';
+
+const history = new ConversationHistory();
+
 // Export to clean, readable Markdown
-const markdown = history.toMarkdown();
+const markdown = historyToMarkdown(history);
 // ### User
 //
 // Hello!
@@ -733,10 +753,30 @@ const markdown = history.toMarkdown();
 // Hi there!
 
 // Export with full metadata (lossless round-trip)
-const markdownWithMetadata = history.toMarkdown({ includeMetadata: true });
+const markdownWithMetadata = historyToMarkdown(history, { includeMetadata: true });
+
+// Export with additional controls (redaction, transient stripping, hidden handling)
+const markdownSafe = historyToMarkdown(history, {
+  includeMetadata: true,
+  stripTransient: true,
+  redactToolArguments: true,
+  redactToolResults: true,
+  includeHidden: false,
+});
 
 // Restore from Markdown
-const restored = ConversationHistory.fromMarkdown(markdownWithMetadata);
+const restored = historyFromMarkdown(markdownWithMetadata);
+```
+
+### Export Helpers
+
+For markdown export workflows, use the built-in helpers:
+
+```ts
+import { exportMarkdown, normalizeLineEndings } from 'conversationalist/export';
+
+const normalizedMarkdown = exportMarkdown(conversation, { includeMetadata: true });
+const normalized = normalizeLineEndings('line1\r\nline2');
 ```
 
 ## Integration
@@ -747,7 +787,7 @@ Because **Conversationalist** is immutable, it works perfectly with React's `use
 
 ```tsx
 import { useState } from 'react';
-import { createConversation, appendUserMessage } from 'conversationalist';
+import { appendUserMessage, createConversation, getMessages } from 'conversationalist';
 
 export function ChatApp() {
   const [conversation, setConversation] = useState(() => createConversation());
@@ -759,7 +799,7 @@ export function ChatApp() {
 
   return (
     <div>
-      {conversation.messages.map((m) => (
+      {getMessages(conversation).map((m) => (
         <div key={m.id}>{String(m.content)}</div>
       ))}
       <button onClick={() => handleSend('Hello!')}>Send</button>
@@ -774,7 +814,7 @@ For more complex applications, you can wrap the logic into a custom hook. This e
 
 ```tsx
 import { useState, useCallback, useEffect } from 'react';
-import { createConversation, ConversationHistory } from 'conversationalist';
+import { ConversationHistory, createConversation, getMessages } from 'conversationalist';
 
 export function useChat(initialTitle?: string) {
   // 1. Initialize history (this could also come from context or props)
@@ -818,7 +858,7 @@ export function useChat(initialTitle?: string) {
 
   return {
     conversation,
-    messages: conversation.messages,
+    messages: getMessages(conversation),
     loading,
     sendMessage,
     undo: () => history.undo(),
@@ -862,7 +902,11 @@ In Svelte 5, you can manage conversation state using the `$state` rune. Since **
 
 ```svelte
 <script lang="ts">
-  import { createConversation, appendUserMessage } from 'conversationalist';
+  import {
+    appendUserMessage,
+    createConversation,
+    getMessages,
+  } from 'conversationalist';
 
   let conversation = $state(createConversation());
 
@@ -872,7 +916,7 @@ In Svelte 5, you can manage conversation state using the `$state` rune. Since **
 </script>
 
 <div>
-  {#each conversation.messages as m (m.id)}
+  {#each getMessages(conversation) as m (m.id)}
     <div>{String(m.content)}</div>
   {/each}
   <button onclick={() => handleSend('Hello!')}>Send</button>
@@ -885,14 +929,14 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 
 ```svelte
 <script lang="ts">
-  import { ConversationHistory } from 'conversationalist';
+  import { ConversationHistory, getMessages } from 'conversationalist';
 
   // history implements the Svelte store contract
   const history = new ConversationHistory();
 </script>
 
 <div>
-  {#each $history.messages as m (m.id)}
+  {#each getMessages($history) as m (m.id)}
     <div>{String(m.content)}</div>
   {/each}
   <button onclick={() => history.appendUserMessage('Hello!')}>
@@ -905,19 +949,24 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 
 ## API Overview
 
-| Category          | Key Functions                                                                                            |
-| :---------------- | :------------------------------------------------------------------------------------------------------- |
-| **Creation**      | `createConversation`, `serializeConversation`, `deserializeConversation`, `migrateConversationJSON`      |
-| **Appending**     | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendMessages`                   |
-| **Streaming**     | `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage` |
-| **Modification**  | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                              |
-| **Context**       | `truncateToTokenLimit`, `getRecentMessages`, `estimateConversationTokens`                                |
-| **Querying**      | `getConversationMessages`, `getMessageByIdentifier`, `computeConversationStatistics`                     |
-| **Conversion**    | `toMarkdown`, `fromMarkdown`, `toChatMessages`, `pairToolCallsWithResults`                               |
-| **Role Labels**   | `ROLE_LABELS`, `LABEL_TO_ROLE`, `getRoleLabel`, `getRoleFromLabel`                                       |
-| **Transient**     | `isTransientKey`, `stripTransientFromRecord`, `stripTransientMetadata`                                   |
-| **Deterministic** | `sortObjectKeys`, `sortMessagesByPosition`                                                               |
-| **History**       | `ConversationHistory`, `bindToConversationHistory`                                                       |
+| Category         | Key Functions                                                                                                                                                                                                                   |
+| :--------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Creation**     | `createConversation`, `serializeConversation`, `deserializeConversation`                                                                                                                                                        |
+| **Appending**    | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendMessages`                                                                                                                                          |
+| **Streaming**    | `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage`                                                                                                                        |
+| **Modification** | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                                                                                                                                                     |
+| **Context**      | `truncateToTokenLimit`, `getRecentMessages`, `estimateConversationTokens`                                                                                                                                                       |
+| **Querying**     | `getMessages`, `getMessageIds`, `getMessageById`, `getStatistics`                                                                                                                                                               |
+| **Conversion**   | `toChatMessages`, `pairToolCallsWithResults`                                                                                                                                                                                    |
+| **Markdown**     | `toMarkdown`, `fromMarkdown`, `historyToMarkdown`, `historyFromMarkdown` (from `conversationalist/markdown`)                                                                                                                    |
+| **Export**       | `exportMarkdown`, `normalizeLineEndings` (from `conversationalist/export`)                                                                                                                                                      |
+| **Schemas**      | `conversationSchema`, `messageJSONSchema`, `messageInputSchema`, `messageRoleSchema`, `multiModalContentSchema`, `jsonValueSchema`, `toolCallSchema`, `toolResultSchema`, `tokenUsageSchema` (from `conversationalist/schemas`) |
+| **Role Labels**  | `ROLE_LABELS`, `LABEL_TO_ROLE`, `getRoleLabel`, `getRoleFromLabel` (from `conversationalist/markdown`)                                                                                                                          |
+| **Transient**    | `isTransientKey`, `stripTransientFromRecord`, `stripTransientMetadata`                                                                                                                                                          |
+| **Redaction**    | `redactPii`, `createPIIRedactionPlugin`, `createPIIRedaction`, `DEFAULT_PII_RULES` (from `conversationalist/redaction`)                                                                                                         |
+| **Versioning**   | `migrateConversation`, `CURRENT_SCHEMA_VERSION` (from `conversationalist/versioning`)                                                                                                                                           |
+| **Sort**         | `sortObjectKeys`, `sortMessagesByPosition` (from `conversationalist/sort`)                                                                                                                                                      |
+| **History**      | `ConversationHistory`                                                                                                                                                                                                           |
 
 ## Standard Schema Compliance
 
@@ -928,6 +977,7 @@ All exported Zod schemas implement the [Standard Schema](https://standardschema.
 | Schema                    | Purpose                             |
 | :------------------------ | :---------------------------------- |
 | `conversationSchema`      | Complete conversation with metadata |
+| `jsonValueSchema`         | JSON-serializable values            |
 | `messageJSONSchema`       | Serialized message format           |
 | `messageInputSchema`      | Input for creating messages         |
 | `messageRoleSchema`       | Valid message roles enum            |
@@ -939,7 +989,7 @@ All exported Zod schemas implement the [Standard Schema](https://standardschema.
 ### Usage with Standard Schema Consumers
 
 ```ts
-import { conversationSchema } from 'conversationalist';
+import { conversationSchema } from 'conversationalist/schemas';
 
 // Access the Standard Schema interface
 const standardSchema = conversationSchema['~standard'];
@@ -959,7 +1009,7 @@ Standard Schema preserves type information:
 
 ```ts
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import { conversationSchema } from 'conversationalist';
+import { conversationSchema } from 'conversationalist/schemas';
 
 // Type is inferred correctly
 type ConversationInput = StandardSchemaV1.InferInput<typeof conversationSchema>;

@@ -1,6 +1,7 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
 import type { Conversation, Message, ToolCall, ToolResult } from '../../types';
+import { getOrderedMessages } from '../../utilities/message-store';
 
 /**
  * OpenAI text content part.
@@ -39,31 +40,76 @@ export interface OpenAIToolCall {
 }
 
 /**
- * OpenAI message format for the Chat Completions API.
+ * OpenAI system message format for the Chat Completions API.
  */
-export interface OpenAIMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | OpenAIContentPart[] | null;
+export interface OpenAISystemMessage {
+  role: 'system';
+  content: string | OpenAITextContentPart[];
+  name?: string;
+}
+
+/**
+ * OpenAI user message format for the Chat Completions API.
+ */
+export interface OpenAIUserMessage {
+  role: 'user';
+  content: string | OpenAIContentPart[];
+  name?: string;
+}
+
+/**
+ * OpenAI assistant message format for the Chat Completions API.
+ */
+export interface OpenAIAssistantMessage {
+  role: 'assistant';
+  content: string | OpenAITextContentPart[] | null;
   name?: string;
   tool_calls?: OpenAIToolCall[];
-  tool_call_id?: string;
 }
+
+/**
+ * OpenAI tool message format for the Chat Completions API.
+ */
+export interface OpenAIToolMessage {
+  role: 'tool';
+  content: string | OpenAITextContentPart[];
+  tool_call_id: string;
+}
+
+/**
+ * OpenAI message format for the Chat Completions API.
+ */
+export type OpenAIMessage =
+  | OpenAISystemMessage
+  | OpenAIUserMessage
+  | OpenAIAssistantMessage
+  | OpenAIToolMessage;
 
 /**
  * Converts internal multi-modal content to OpenAI content parts format.
  */
 function toOpenAIContent(
   content: string | ReadonlyArray<MultiModalContent>,
-): string | OpenAIContentPart[] {
+  options: { allowImages: false },
+): string | OpenAITextContentPart[];
+function toOpenAIContent(
+  content: string | ReadonlyArray<MultiModalContent>,
+  options?: { allowImages?: true },
+): string | OpenAIContentPart[];
+function toOpenAIContent(
+  content: string | ReadonlyArray<MultiModalContent>,
+  options: { allowImages?: boolean } = {},
+): string | OpenAIContentPart[] | OpenAITextContentPart[] {
   if (typeof content === 'string') {
     return content;
   }
 
+  const allowImages = options.allowImages ?? true;
   const parts: OpenAIContentPart[] = [];
   for (const part of content) {
     if (part.type === 'text') {
       parts.push({ type: 'text', text: part.text ?? '' });
-    } else if (part.type === 'image') {
+    } else if (part.type === 'image' && allowImages) {
       parts.push({
         type: 'image_url',
         image_url: { url: part.url ?? '' },
@@ -71,7 +117,24 @@ function toOpenAIContent(
     }
   }
 
-  return parts.length === 1 && parts[0]?.type === 'text' ? parts[0].text : parts;
+  if (parts.length === 0) {
+    return '';
+  }
+
+  if (parts.length === 1 && parts[0]?.type === 'text') {
+    return parts[0].text;
+  }
+
+  return allowImages ? parts : (parts as OpenAITextContentPart[]);
+}
+
+/**
+ * Converts internal multi-modal content to OpenAI text-only format.
+ */
+function toOpenAITextContent(
+  content: string | ReadonlyArray<MultiModalContent>,
+): string | OpenAITextContentPart[] {
+  return toOpenAIContent(content, { allowImages: false });
 }
 
 /**
@@ -106,7 +169,7 @@ function convertMessage(message: Message): OpenAIMessage | null {
     case 'developer':
       return {
         role: 'system',
-        content: toOpenAIContent(message.content),
+        content: toOpenAITextContent(message.content),
       };
 
     case 'user':
@@ -118,7 +181,7 @@ function convertMessage(message: Message): OpenAIMessage | null {
     case 'assistant':
       return {
         role: 'assistant',
-        content: toOpenAIContent(message.content),
+        content: toOpenAITextContent(message.content),
       };
 
     case 'tool-use':
@@ -178,7 +241,7 @@ function stringifyToolResult(result: ToolResult): string {
 export function toOpenAIMessages(conversation: Conversation): OpenAIMessage[] {
   const messages: OpenAIMessage[] = [];
 
-  for (const message of conversation.messages) {
+  for (const message of getOrderedMessages(conversation)) {
     const converted = convertMessage(message);
     if (converted) {
       messages.push(converted);
@@ -196,7 +259,7 @@ export function toOpenAIMessagesGrouped(conversation: Conversation): OpenAIMessa
   const messages: OpenAIMessage[] = [];
   let pendingToolCalls: OpenAIToolCall[] = [];
 
-  for (const message of conversation.messages) {
+  for (const message of getOrderedMessages(conversation)) {
     if (message.hidden) continue;
 
     if (message.role === 'tool-use' && message.toolCall) {

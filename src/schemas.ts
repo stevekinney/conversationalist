@@ -1,26 +1,68 @@
+import type { MultiModalContent } from '@lasercat/homogenaize';
 import { z } from 'zod';
 
 import type {
-  ConversationJSON,
+  Conversation,
   ConversationStatus,
+  JSONValue,
+  Message,
   MessageInput,
-  MessageJSON,
   MessageRole,
   TokenUsage,
   ToolCall,
   ToolResult,
 } from './types';
 
-export const multiModalContentSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), text: z.string() }),
-  z.object({
-    type: z.literal('image'),
-    url: z.string().url(),
-    mimeType: z.string().optional(),
-    text: z.string().optional(),
-  }),
-]);
+type RawMultiModalContent = {
+  type: 'text' | 'image';
+  text?: string | undefined;
+  url?: string | undefined;
+  mimeType?: string | undefined;
+};
 
+function toMultiModalContent(value: RawMultiModalContent): MultiModalContent {
+  const result: MultiModalContent = { type: value.type };
+  if (value.text !== undefined) result.text = value.text;
+  if (value.url !== undefined) result.url = value.url;
+  if (value.mimeType !== undefined) result.mimeType = value.mimeType;
+  return result;
+}
+
+/**
+ * Zod schema for JSON-serializable values.
+ */
+export const jsonValueSchema: z.ZodType<JSONValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+) satisfies z.ZodType<JSONValue>;
+
+/**
+ * Zod schema for multi-modal content parts (text or image).
+ */
+export const multiModalContentSchema = z
+  .discriminatedUnion('type', [
+    z.object({
+      type: z.literal('text'),
+      text: z.string(),
+    }),
+    z.object({
+      type: z.literal('image'),
+      url: z.string().url(),
+      mimeType: z.string().optional(),
+      text: z.string().optional(),
+    }),
+  ])
+  .transform(toMultiModalContent) satisfies z.ZodType<MultiModalContent>;
+
+/**
+ * Zod schema for valid message roles.
+ */
 export const messageRoleSchema = z.enum([
   'user',
   'assistant',
@@ -29,37 +71,56 @@ export const messageRoleSchema = z.enum([
   'tool-use',
   'tool-result',
   'snapshot',
-]) as unknown as z.ZodType<MessageRole>;
+]) satisfies z.ZodType<MessageRole>;
 
+/**
+ * Zod schema for tool call metadata.
+ */
 export const toolCallSchema = z.object({
   id: z.string(),
   name: z.string(),
-  arguments: z.unknown(),
-}) as unknown as z.ZodType<ToolCall>;
+  arguments: jsonValueSchema,
+}) satisfies z.ZodType<ToolCall>;
 
+/**
+ * Zod schema for tool result metadata.
+ */
 export const toolResultSchema = z.object({
   callId: z.string(),
   outcome: z.enum(['success', 'error']),
-  content: z.unknown(),
-}) as unknown as z.ZodType<ToolResult>;
+  content: jsonValueSchema,
+  toolCallId: z.string().optional(),
+  toolName: z.string().optional(),
+  result: jsonValueSchema.optional(),
+  error: z.string().optional(),
+}) satisfies z.ZodType<ToolResult>;
 
+/**
+ * Zod schema for token usage accounting.
+ */
 export const tokenUsageSchema = z.object({
   prompt: z.number().int().min(0),
   completion: z.number().int().min(0),
   total: z.number().int().min(0),
-}) as unknown as z.ZodType<TokenUsage>;
+}) satisfies z.ZodType<TokenUsage>;
 
+/**
+ * Zod schema for message input payloads.
+ */
 export const messageInputSchema = z.object({
   role: messageRoleSchema,
   content: z.union([z.string(), z.array(multiModalContentSchema)]),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string(), jsonValueSchema).optional(),
   hidden: z.boolean().optional(),
   toolCall: toolCallSchema.optional(),
   toolResult: toolResultSchema.optional(),
   tokenUsage: tokenUsageSchema.optional(),
   goalCompleted: z.boolean().optional(),
-}) as unknown as z.ZodType<MessageInput>;
+}) satisfies z.ZodType<MessageInput>;
 
+/**
+ * Zod schema for serialized messages.
+ */
 export const messageJSONSchema = z
   .object({
     id: z.string(),
@@ -67,34 +128,43 @@ export const messageJSONSchema = z
     content: z.union([z.string(), z.array(multiModalContentSchema)]),
     position: z.number().int().min(0),
     createdAt: z.string(),
-    metadata: z.record(z.string(), z.unknown()),
+    metadata: z.record(z.string(), jsonValueSchema),
     hidden: z.boolean(),
     toolCall: toolCallSchema.optional(),
     toolResult: toolResultSchema.optional(),
     tokenUsage: tokenUsageSchema.optional(),
     goalCompleted: z.boolean().optional(),
   })
-  .passthrough() as unknown as z.ZodType<MessageJSON>;
+  .loose() satisfies z.ZodType<Message>;
 
+/**
+ * Zod schema for conversation status values.
+ */
 export const conversationStatusSchema = z.enum([
   'active',
   'archived',
   'deleted',
-]) as unknown as z.ZodType<ConversationStatus>;
+]) satisfies z.ZodType<ConversationStatus>;
 
-// Export the raw shape for direct use with storage systems
+/**
+ * Raw conversation shape for storage systems that need direct access to fields.
+ */
 export const conversationShape = {
   schemaVersion: z.number().int().min(1),
   id: z.string(),
   title: z.string().optional(),
   status: conversationStatusSchema,
-  metadata: z.record(z.string(), z.unknown()),
+  metadata: z.record(z.string(), jsonValueSchema),
   tags: z.array(z.string()),
-  messages: z.array(messageJSONSchema),
+  ids: z.array(z.string()),
+  messages: z.record(z.string(), messageJSONSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
 } as const;
 
+/**
+ * Zod schema for serialized conversations.
+ */
 export const conversationSchema = z.object(
   conversationShape,
-) as unknown as z.ZodType<ConversationJSON>;
+) satisfies z.ZodType<Conversation>;

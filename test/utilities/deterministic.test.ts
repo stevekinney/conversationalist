@@ -1,9 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import {
-  sortMessagesByPosition,
-  sortObjectKeys,
-} from '../../src/utilities/deterministic';
+import { sortMessagesByPosition, sortObjectKeys } from '../../src/sort';
 
 describe('deterministic utilities', () => {
   describe('sortObjectKeys', () => {

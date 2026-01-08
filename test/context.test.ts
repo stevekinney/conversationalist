@@ -9,7 +9,13 @@ import {
 } from '../src/context';
 import { appendMessages, createConversation } from '../src/conversation';
 import { isConversationEnvironmentParameter } from '../src/environment';
+import type { Conversation, Message } from '../src/types';
 import { createMessage } from '../src/utilities';
+
+const getOrderedMessages = (conversation: Conversation): Message[] =>
+  conversation.ids
+    .map((id) => conversation.messages[id])
+    .filter((message): message is Message => Boolean(message));
 
 const testEnvironment = {
   now: () => '2024-01-01T00:00:00.000Z',
@@ -92,9 +98,9 @@ describe('truncateFromPosition', () => {
     );
 
     const truncated = truncateFromPosition(conv, 2, undefined, testEnvironment);
-    expect(truncated.messages).toHaveLength(2);
-    expect(truncated.messages[0]?.content).toBe('Message 2');
-    expect(truncated.messages[1]?.content).toBe('Message 3');
+    expect(getOrderedMessages(truncated)).toHaveLength(2);
+    expect(getOrderedMessages(truncated)[0]?.content).toBe('Message 2');
+    expect(getOrderedMessages(truncated)[1]?.content).toBe('Message 3');
   });
 
   it('preserves system messages by default', () => {
@@ -109,8 +115,8 @@ describe('truncateFromPosition', () => {
     );
 
     const truncated = truncateFromPosition(conv, 2, undefined, testEnvironment);
-    expect(truncated.messages.some((m) => m.role === 'system')).toBe(true);
-    expect(truncated.messages[0]?.content).toBe('System prompt');
+    expect(getOrderedMessages(truncated).some((m) => m.role === 'system')).toBe(true);
+    expect(getOrderedMessages(truncated)[0]?.content).toBe('System prompt');
   });
 
   it('can exclude system messages', () => {
@@ -129,7 +135,7 @@ describe('truncateFromPosition', () => {
       { preserveSystemMessages: false },
       testEnvironment,
     );
-    expect(truncated.messages.every((m) => m.role !== 'system')).toBe(true);
+    expect(getOrderedMessages(truncated).every((m) => m.role !== 'system')).toBe(true);
   });
 
   it('renumbers positions correctly', () => {
@@ -143,7 +149,7 @@ describe('truncateFromPosition', () => {
     );
 
     const truncated = truncateFromPosition(conv, 1, undefined, testEnvironment);
-    truncated.messages.forEach((m, i) => {
+    getOrderedMessages(truncated).forEach((m, i) => {
       expect(m.position).toBe(i);
     });
   });
@@ -161,8 +167,8 @@ describe('truncateFromPosition', () => {
     );
 
     const truncated = truncateFromPosition(conv, 1, undefined, testEnvironment);
-    expect(truncated.messages).toHaveLength(1);
-    expect(Array.isArray(truncated.messages[0].content)).toBe(true);
+    expect(getOrderedMessages(truncated)).toHaveLength(1);
+    expect(Array.isArray(getOrderedMessages(truncated)[0].content)).toBe(true);
   });
 });
 
@@ -231,7 +237,7 @@ describe('truncateToTokenLimit', () => {
       { estimateTokens: simpleTokenEstimator },
       testEnvironment,
     );
-    expect(truncated.messages).toHaveLength(conv.messages.length);
+    expect(getOrderedMessages(truncated)).toHaveLength(getOrderedMessages(conv).length);
   });
 
   it('removes oldest messages first to fit limit', () => {
@@ -252,7 +258,7 @@ describe('truncateToTokenLimit', () => {
       { estimateTokens: simpleTokenEstimator },
       testEnvironment,
     );
-    expect(truncated.messages.length).toBeLessThan(conv.messages.length);
+    expect(getOrderedMessages(truncated).length).toBeLessThan(getOrderedMessages(conv).length);
   });
 
   it('preserves system messages', () => {
@@ -271,7 +277,7 @@ describe('truncateToTokenLimit', () => {
       { estimateTokens: simpleTokenEstimator },
       testEnvironment,
     );
-    expect(truncated.messages.some((m) => m.role === 'system')).toBe(true);
+    expect(getOrderedMessages(truncated).some((m) => m.role === 'system')).toBe(true);
   });
 
   it('preserves last N messages when specified', () => {
@@ -296,7 +302,7 @@ describe('truncateToTokenLimit', () => {
     );
 
     // The last 2 messages should always be preserved
-    const lastMessages = truncated.messages.slice(-2);
+    const lastMessages = getOrderedMessages(truncated).slice(-2);
     expect(lastMessages[0]?.content).toBe('New message');
     expect(lastMessages[1]?.content).toBe('New response');
   });
@@ -325,9 +331,9 @@ describe('truncateToTokenLimit', () => {
     );
 
     // Should contain system message and last 2 protected messages
-    expect(truncated.messages.some((m) => m.role === 'system')).toBe(true);
+    expect(getOrderedMessages(truncated).some((m) => m.role === 'system')).toBe(true);
     // Positions should be renumbered
-    truncated.messages.forEach((m, i) => {
+    getOrderedMessages(truncated).forEach((m, i) => {
       expect(m.position).toBe(i);
     });
   });
@@ -359,7 +365,7 @@ describe('truncateToTokenLimit', () => {
     );
 
     // Should preserve array content structure
-    expect(truncated.messages.length).toBeGreaterThan(0);
+    expect(getOrderedMessages(truncated).length).toBeGreaterThan(0);
   });
 
   it('handles messages with tool calls during truncation', () => {
@@ -393,7 +399,7 @@ describe('truncateToTokenLimit', () => {
     );
 
     // Should handle toolCall and toolResult properties
-    expect(truncated.messages.length).toBeGreaterThan(0);
+    expect(getOrderedMessages(truncated).length).toBeGreaterThan(0);
   });
 
   it('handles messages with token usage during truncation', () => {
@@ -421,7 +427,7 @@ describe('truncateToTokenLimit', () => {
     );
 
     // Should preserve tokenUsage in truncated messages
-    const assistantMsg = truncated.messages.find((m) => m.role === 'assistant');
+    const assistantMsg = getOrderedMessages(truncated).find((m) => m.role === 'assistant');
     if (assistantMsg) {
       expect(assistantMsg.tokenUsage).toBeDefined();
     }
@@ -434,8 +440,8 @@ describe('truncateToTokenLimit', () => {
 
     // Tokens: Hello (2) + World (2) = 4
     const truncated = truncateToTokenLimit(conv, 2, { preserveLastN: 1 });
-    expect(truncated.messages.length).toBe(1);
-    expect(truncated.messages[0].content).toBe('World');
+    expect(getOrderedMessages(truncated).length).toBe(1);
+    expect(getOrderedMessages(truncated)[0].content).toBe('World');
   });
 
   it('works with no options or estimator provided', () => {
@@ -443,7 +449,7 @@ describe('truncateToTokenLimit', () => {
     conv = appendMessages(conv, { role: 'user', content: 'Hello world' });
 
     const truncated = truncateToTokenLimit(conv, 1);
-    expect(truncated.messages.length).toBe(0);
+    expect(getOrderedMessages(truncated).length).toBe(0);
   });
 
   it('accepts a function as the third argument (overload)', () => {
@@ -451,7 +457,7 @@ describe('truncateToTokenLimit', () => {
     conv = appendMessages(conv, { role: 'user', content: 'Hello' });
 
     const truncated = truncateToTokenLimit(conv, 1, () => 100);
-    expect(truncated.messages.length).toBe(0);
+    expect(getOrderedMessages(truncated).length).toBe(0);
   });
 
   it('does not overwrite explicitly passed environment when options contain an estimator', () => {
@@ -478,7 +484,7 @@ describe('truncateToTokenLimit', () => {
     // If it uses options.estimateTokens (100), 100 > 10, so it truncates.
     // If it uses myEnv.estimateTokens (1), 1 <= 10, so it doesn't truncate.
 
-    expect(truncated.messages.length).toBe(0); // Should have used the 100 tokens estimator
+    expect(getOrderedMessages(truncated).length).toBe(0); // Should have used the 100 tokens estimator
     expect(truncated.updatedAt).toBe('2025-01-01T00:00:00.000Z'); // Should have used myEnv.now()
   });
 
@@ -494,7 +500,7 @@ describe('truncateToTokenLimit', () => {
     // If it's correctly identified as options, it should truncate.
     // If it's incorrectly identified as environment, it will use the default estimator (character count / 4),
     // 'Hello' is 5 chars -> 2 tokens. 2 <= 10, so it won't truncate.
-    expect(truncated.messages.length).toBe(0);
+    expect(getOrderedMessages(truncated).length).toBe(0);
   });
 
   it('does not identify { plugins: [] } as an environment', () => {
@@ -516,7 +522,7 @@ describe('truncateToTokenLimit', () => {
     // Pass environment as 3rd arg, 4th arg is undefined
     const truncated = truncateToTokenLimit(conv, 10, myEnv);
 
-    expect(truncated.messages.length).toBe(0); // Truncated because 100 > 10
+    expect(getOrderedMessages(truncated).length).toBe(0); // Truncated because 100 > 10
     expect(truncated.updatedAt).toBe('2025-01-01T00:00:00.000Z');
   });
 
@@ -534,7 +540,7 @@ describe('truncateToTokenLimit', () => {
     const truncated = truncateToTokenLimit(conv, 10, ambiguousObject);
 
     // Should truncate using the environment's estimator
-    expect(truncated.messages.length).toBe(0);
+    expect(getOrderedMessages(truncated).length).toBe(0);
     // Should use the environment's now function (not default)
     expect(truncated.updatedAt).toBe('2025-01-01T00:00:00.000Z');
   });
@@ -552,7 +558,7 @@ describe('truncateToTokenLimit', () => {
     const truncated = truncateToTokenLimit(conv, 10, optionsObject);
 
     // Should truncate using the provided estimator
-    expect(truncated.messages.length).toBe(0);
+    expect(getOrderedMessages(truncated).length).toBe(0);
     // updatedAt should use default environment (current time), not a fixed time
     expect(truncated.updatedAt).not.toBe('2025-01-01T00:00:00.000Z');
   });

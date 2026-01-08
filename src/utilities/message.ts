@@ -1,17 +1,22 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
 import { copyContent } from '../multi-modal';
-import type { Message, MessageJSON } from '../types';
+import type { AssistantMessage, Message } from '../types';
 import { toReadonly } from './type-helpers';
 
 /**
  * Creates an immutable Message from a JSON representation.
  * Deep copies nested objects and arrays to ensure immutability.
  */
-export function createMessage(props: MessageJSON): Message {
-  const content = Array.isArray(props.content)
-    ? toReadonly([...props.content])
-    : props.content;
+export function createMessage(props: AssistantMessage): AssistantMessage;
+export function createMessage(props: Message): Message;
+export function createMessage(
+  props: Message | AssistantMessage,
+): Message | AssistantMessage {
+  const content =
+    typeof props.content === 'string'
+      ? props.content
+      : toReadonly(props.content.map((part) => part));
 
   const message: Message = {
     id: props.id,
@@ -24,8 +29,15 @@ export function createMessage(props: MessageJSON): Message {
     toolCall: props.toolCall ? toReadonly({ ...props.toolCall }) : undefined,
     toolResult: props.toolResult ? toReadonly({ ...props.toolResult }) : undefined,
     tokenUsage: props.tokenUsage ? toReadonly({ ...props.tokenUsage }) : undefined,
-    goalCompleted: props.goalCompleted,
   };
+
+  if (isAssistantMessage(props)) {
+    return toReadonly({
+      ...message,
+      role: 'assistant',
+      goalCompleted: props.goalCompleted,
+    });
+  }
 
   return toReadonly(message);
 }
@@ -34,8 +46,12 @@ export function createMessage(props: MessageJSON): Message {
  * Converts an immutable Message to a mutable JSON representation.
  * Creates deep copies of all nested objects.
  */
-export function messageToJSON(message: Message): MessageJSON {
-  return {
+export function messageToJSON(message: AssistantMessage): AssistantMessage;
+export function messageToJSON(message: Message): Message;
+export function messageToJSON(
+  message: Message | AssistantMessage,
+): Message | AssistantMessage {
+  const base: Message = {
     id: message.id,
     role: message.role,
     content: copyContent(message.content),
@@ -46,8 +62,17 @@ export function messageToJSON(message: Message): MessageJSON {
     toolCall: message.toolCall ? { ...message.toolCall } : undefined,
     toolResult: message.toolResult ? { ...message.toolResult } : undefined,
     tokenUsage: message.tokenUsage ? { ...message.tokenUsage } : undefined,
-    goalCompleted: message.goalCompleted,
   };
+
+  if (isAssistantMessage(message)) {
+    return {
+      ...base,
+      role: 'assistant',
+      goalCompleted: message.goalCompleted,
+    };
+  }
+
+  return base;
 }
 
 /**
@@ -95,4 +120,11 @@ export function messageToString(message: Message): string {
         : `![${part.text ?? ''}](${(part as { url: string }).url})`,
     )
     .join('\n\n');
+}
+
+/**
+ * Type guard for narrowing a Message to an AssistantMessage.
+ */
+export function isAssistantMessage(message: Message): message is AssistantMessage {
+  return message.role === 'assistant';
 }

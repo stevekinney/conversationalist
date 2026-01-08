@@ -8,13 +8,13 @@ export type {
 
 // Types
 export type {
+  AssistantMessage,
   Conversation,
-  ConversationJSON,
   ConversationStatus,
   ExportOptions,
+  JSONValue,
   Message,
   MessageInput,
-  MessageJSON,
   MessageRole,
   SerializeOptions,
   TokenUsage,
@@ -22,12 +22,12 @@ export type {
   ToolCall,
   ToolResult,
 } from './types';
-export { CURRENT_SCHEMA_VERSION } from './types';
 
 // Schemas
 export {
   conversationSchema,
   conversationShape,
+  jsonValueSchema,
   messageInputSchema,
   messageJSONSchema,
   messageRoleSchema,
@@ -45,16 +45,16 @@ export {
   appendSystemMessage,
   appendUserMessage,
   collapseSystemMessages,
-  computeConversationStatistics,
   createConversation,
   deserializeConversation,
-  getConversationMessages,
   getFirstSystemMessage,
   getMessageAtPosition,
-  getMessageByIdentifier,
+  getMessageById,
+  getMessageIds,
+  getMessages,
+  getStatistics,
   getSystemMessages,
   hasSystemMessage,
-  migrateConversationJSON,
   prependSystemMessage,
   redactMessageAtPosition,
   replaceSystemMessage,
@@ -65,7 +65,7 @@ export {
 export { withEnvironment } from './environment';
 
 // Message helpers
-export { createMessage } from './utilities';
+export { createMessage, isAssistantMessage } from './utilities';
 
 // Errors
 export type { ConversationalistErrorCode } from './errors';
@@ -84,20 +84,11 @@ export {
 // Utilities
 export type { ToolCallPair } from './utilities';
 export {
-  fromMarkdown,
-  getRoleFromLabel,
-  getRoleLabel,
   isTransientKey,
-  LABEL_TO_ROLE,
-  MarkdownParseError,
   normalizeContent,
   pairToolCallsWithResults,
-  ROLE_LABELS,
-  sortMessagesByPosition,
-  sortObjectKeys,
   stripTransientFromRecord,
   stripTransientMetadata,
-  toMarkdown,
   toMultiModalArray,
 } from './utilities';
 
@@ -106,8 +97,8 @@ export type { ConversationDraft } from './with-conversation';
 export { pipeConversation, withConversation } from './with-conversation';
 
 // History utility
-export { bindToConversationHistory, ConversationHistory } from './history';
-export type { ConversationHistoryJSON, HistoryNodeJSON } from './types';
+export { ConversationHistory } from './history';
+export type { ConversationHistorySnapshot, HistoryNodeSnapshot } from './types';
 
 // Streaming utilities
 export {

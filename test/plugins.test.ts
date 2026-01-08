@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 
 import { appendMessages, ConversationHistory, createConversation } from '../src';
-import { createPIIRedactionPlugin, piiRedactionPlugin } from '../src/plugins';
+import { createPIIRedactionPlugin, redactPii } from '../src/redaction';
+import type { Conversation, Message, MessageInput } from '../src/types';
 
-describe('piiRedactionPlugin', () => {
+const getOrderedMessages = (conversation: Conversation): Message[] =>
+  conversation.ids
+    .map((id) => conversation.messages[id])
+    .filter((message): message is Message => Boolean(message));
+
+describe('redactPii', () => {
   it('should redact emails', () => {
-    const env = { plugins: [piiRedactionPlugin] };
+    const env = { plugins: [redactPii] };
     let conv = createConversation({}, env);
     conv = appendMessages(
       conv,
@@ -13,11 +19,11 @@ describe('piiRedactionPlugin', () => {
       env,
     );
 
-    expect(conv.messages[0].content).toBe('My email is [EMAIL_REDACTED]');
+    expect(getOrderedMessages(conv)[0].content).toBe('My email is [EMAIL_REDACTED]');
   });
 
   it('should redact phone numbers', () => {
-    const env = { plugins: [piiRedactionPlugin] };
+    const env = { plugins: [redactPii] };
     let conv = createConversation({}, env);
     conv = appendMessages(
       conv,
@@ -25,11 +31,11 @@ describe('piiRedactionPlugin', () => {
       env,
     );
 
-    expect(conv.messages[0].content).toBe('Call me at [PHONE_REDACTED]');
+    expect(getOrderedMessages(conv)[0].content).toBe('Call me at [PHONE_REDACTED]');
   });
 
   it('should redact API keys', () => {
-    const env = { plugins: [piiRedactionPlugin] };
+    const env = { plugins: [redactPii] };
     let conv = createConversation({}, env);
     conv = appendMessages(
       conv,
@@ -40,11 +46,13 @@ describe('piiRedactionPlugin', () => {
       env,
     );
 
-    expect(conv.messages[0].content).toBe('My key is api_key: "[KEY_REDACTED]"');
+    expect(getOrderedMessages(conv)[0].content).toBe(
+      'My key is api_key: "[KEY_REDACTED]"',
+    );
   });
 
   it('should redact multi-modal content', () => {
-    const env = { plugins: [piiRedactionPlugin] };
+    const env = { plugins: [redactPii] };
     let conv = createConversation({}, env);
     conv = appendMessages(
       conv,
@@ -58,7 +66,7 @@ describe('piiRedactionPlugin', () => {
       env,
     );
 
-    expect(conv.messages[0].content).toEqual([
+    expect(getOrderedMessages(conv)[0].content).toEqual([
       { type: 'text', text: 'My email is [EMAIL_REDACTED]' },
       { type: 'image', url: 'https://example.com/image.png' },
     ]);
@@ -71,17 +79,21 @@ describe('piiRedactionPlugin', () => {
       content: 'My email is test@example.com',
     });
 
-    expect(conv.messages[0].content).toBe('My email is test@example.com');
+    expect(getOrderedMessages(conv)[0].content).toBe(
+      'My email is test@example.com',
+    );
   });
 
   it('should work when bound to ConversationHistory', () => {
-    const env = { plugins: [piiRedactionPlugin] };
+    const env = { plugins: [redactPii] };
     const history = new ConversationHistory(createConversation(), env);
     const boundAppend = history.bind(appendMessages);
 
     boundAppend({ role: 'user', content: 'My email is test@example.com' });
 
-    expect(history.current.messages[0].content).toBe('My email is [EMAIL_REDACTED]');
+    expect(getOrderedMessages(history.current)[0].content).toBe(
+      'My email is [EMAIL_REDACTED]',
+    );
   });
 
   it('should support custom redaction rules', () => {
@@ -98,7 +110,7 @@ describe('piiRedactionPlugin', () => {
     let conv = createConversation({}, env);
     conv = appendMessages(conv, { role: 'user', content: 'SSN: 123-45-6789' }, env);
 
-    expect(conv.messages[0].content).toBe('SSN: [SSN_REDACTED]');
+    expect(getOrderedMessages(conv)[0].content).toBe('SSN: [SSN_REDACTED]');
   });
 
   it('should support excluding default rules', () => {
@@ -114,7 +126,7 @@ describe('piiRedactionPlugin', () => {
       env,
     );
 
-    expect(conv.messages[0].content).toBe(
+    expect(getOrderedMessages(conv)[0].content).toBe(
       'Email: test@example.com, Phone: [PHONE_REDACTED]',
     );
   });

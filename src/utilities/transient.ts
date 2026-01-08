@@ -1,4 +1,6 @@
-import type { Conversation, Message } from '../types';
+import type { AssistantMessage, Conversation, JSONValue, Message } from '../types';
+import { isAssistantMessage } from './message';
+import { getOrderedMessages, toIdRecord } from './message-store';
 import { toReadonly } from './type-helpers';
 
 /**
@@ -32,9 +34,9 @@ export function isTransientKey(key: string): boolean {
  * ```
  */
 export function stripTransientFromRecord(
-  metadata: Record<string, unknown>,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  metadata: Record<string, JSONValue>,
+): Record<string, JSONValue> {
+  const result: Record<string, JSONValue> = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (!isTransientKey(key)) {
       result[key] = value;
@@ -60,30 +62,41 @@ export function stripTransientFromRecord(
  * ```
  */
 export function stripTransientMetadata(conversation: Conversation): Conversation {
-  const strippedMessages = conversation.messages.map(
-    (message): Message =>
-      toReadonly({
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        position: message.position,
-        createdAt: message.createdAt,
-        metadata: toReadonly(stripTransientFromRecord({ ...message.metadata })),
-        hidden: message.hidden,
-        toolCall: message.toolCall,
-        toolResult: message.toolResult,
-        tokenUsage: message.tokenUsage,
+  const strippedMessages = getOrderedMessages(conversation).map((message): Message => {
+    const baseMessage = {
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      position: message.position,
+      createdAt: message.createdAt,
+      metadata: toReadonly(stripTransientFromRecord({ ...message.metadata })),
+      hidden: message.hidden,
+      toolCall: message.toolCall,
+      toolResult: message.toolResult,
+      tokenUsage: message.tokenUsage,
+    };
+
+    if (isAssistantMessage(message)) {
+      const assistantMessage: AssistantMessage = {
+        ...baseMessage,
+        role: 'assistant',
         goalCompleted: message.goalCompleted,
-      }),
-  );
+      };
+      return toReadonly(assistantMessage);
+    }
+
+    return toReadonly(baseMessage);
+  });
 
   return toReadonly({
+    schemaVersion: conversation.schemaVersion,
     id: conversation.id,
     title: conversation.title,
     status: conversation.status,
     metadata: toReadonly(stripTransientFromRecord({ ...conversation.metadata })),
     tags: conversation.tags,
-    messages: strippedMessages,
+    ids: strippedMessages.map((message) => message.id),
+    messages: toIdRecord(strippedMessages),
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
   });

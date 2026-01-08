@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   conversationSchema,
   conversationShape,
+  jsonValueSchema,
   messageInputSchema,
   messageJSONSchema,
   messageRoleSchema,
@@ -12,7 +13,7 @@ import {
   toolCallSchema,
   toolResultSchema,
 } from '../src/schemas';
-import { CURRENT_SCHEMA_VERSION } from '../src/types';
+import { CURRENT_SCHEMA_VERSION } from '../src/versioning';
 
 describe('schemas', () => {
   test('messageRoleSchema accepts tool-use literal', () => {
@@ -50,7 +51,8 @@ describe('schemas', () => {
       status: 'active',
       metadata: {},
       tags: [],
-      messages: [],
+      ids: [],
+      messages: {},
       createdAt: now,
       updatedAt: now,
     } as const;
@@ -70,6 +72,7 @@ describe('schemas', () => {
     expect(conversationShape).toHaveProperty('status');
     expect(conversationShape).toHaveProperty('metadata');
     expect(conversationShape).toHaveProperty('tags');
+    expect(conversationShape).toHaveProperty('ids');
     expect(conversationShape).toHaveProperty('messages');
     expect(conversationShape).toHaveProperty('createdAt');
     expect(conversationShape).toHaveProperty('updatedAt');
@@ -92,7 +95,8 @@ describe('schemas', () => {
       status: 'active' as const,
       metadata: {},
       tags: ['test'],
-      messages: [],
+      ids: [],
+      messages: {},
       createdAt: now,
       updatedAt: now,
     };
@@ -112,6 +116,7 @@ describe('schemas', () => {
     expect('status' in schemaShape).toBe(true);
     expect('metadata' in schemaShape).toBe(true);
     expect('tags' in schemaShape).toBe(true);
+    expect('ids' in schemaShape).toBe(true);
     expect('messages' in schemaShape).toBe(true);
     expect('createdAt' in schemaShape).toBe(true);
     expect('updatedAt' in schemaShape).toBe(true);
@@ -140,7 +145,8 @@ describe('schemas', () => {
       status: 'active' as const,
       metadata: {},
       tags: [],
-      messages: [],
+      ids: [],
+      messages: {},
       createdAt: now,
       updatedAt: now,
     };
@@ -157,6 +163,7 @@ describe('Standard Schema compliance', () => {
   test('all schemas have ~standard property', () => {
     const schemas = [
       conversationSchema,
+      jsonValueSchema,
       messageJSONSchema,
       messageInputSchema,
       messageRoleSchema,
@@ -181,7 +188,8 @@ describe('Standard Schema compliance', () => {
       status: 'active',
       metadata: {},
       tags: [],
-      messages: [],
+      ids: [],
+      messages: {},
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

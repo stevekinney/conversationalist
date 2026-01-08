@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { MessageJSON } from '../src/types';
+import type { Message } from '../src/types';
 import {
   createMessage,
+  isAssistantMessage,
   messageHasImages,
   messageParts,
   messageText,
@@ -10,7 +11,7 @@ import {
   messageToString,
 } from '../src/utilities';
 
-function base(now = new Date().toISOString()): MessageJSON {
+function base(now = new Date().toISOString()): Message {
   return {
     id: 'm1',
     role: 'user',
@@ -31,7 +32,7 @@ describe('message helpers', () => {
 
   test('parts/text/hasImages/toString with multimodal content', () => {
     const now = new Date().toISOString();
-    const json: MessageJSON = {
+    const message: Message = {
       id: 'm2',
       role: 'assistant',
       content: [
@@ -43,7 +44,7 @@ describe('message helpers', () => {
       metadata: {},
       hidden: false,
     };
-    const msg = createMessage(json);
+    const msg = createMessage(message);
     expect(messageParts(msg).length).toBe(2);
     expect(messageText(msg)).toContain('hi');
     expect(messageHasImages(msg)).toBeTrue();
@@ -69,5 +70,19 @@ describe('message helpers', () => {
     expect(messageParts(msg)).toEqual([]);
     expect(messageToString(msg)).toBe('');
     expect(messageText(msg)).toBe('');
+  });
+
+  test('isAssistantMessage narrows assistant messages', () => {
+    const msg = createMessage({
+      id: 'assistant',
+      role: 'assistant',
+      content: 'Done',
+      position: 0,
+      createdAt: new Date().toISOString(),
+      metadata: {},
+      hidden: false,
+    });
+
+    expect(isAssistantMessage(msg)).toBe(true);
   });
 });

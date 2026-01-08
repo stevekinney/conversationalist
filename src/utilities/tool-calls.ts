@@ -1,4 +1,4 @@
-import type { MessageJSON, ToolResult } from '../types';
+import type { JSONValue, Message, ToolResult } from '../types';
 
 /**
  * Represents a paired tool call with its optional result.
@@ -8,7 +8,7 @@ export interface ToolCallPair {
   call: {
     id: string;
     name: string;
-    arguments: unknown;
+    arguments: JSONValue;
   };
   /** The corresponding result, if available */
   result?: ToolResult | undefined;
@@ -22,7 +22,7 @@ export interface ToolCallPair {
  * 1. Collects all tool results into a map by their callId
  * 2. Pairs each tool call with its matching result (if any)
  *
- * @param messages - Array of messages that may contain tool calls and results
+ * @param messages - Messages that may contain tool calls and results (array or record)
  * @returns Array of tool call pairs, preserving the order of tool calls
  *
  * @example
@@ -32,20 +32,27 @@ export interface ToolCallPair {
  * ```
  */
 export function pairToolCallsWithResults(
-  messages: readonly MessageJSON[],
+  messages: ReadonlyArray<Message> | Readonly<Record<string, Message>>,
 ): ToolCallPair[] {
+  const isMessageArray = (
+    value: ReadonlyArray<Message> | Readonly<Record<string, Message>>,
+  ): value is ReadonlyArray<Message> => Array.isArray(value);
+
+  const ordered = isMessageArray(messages)
+    ? messages
+    : Object.values(messages).sort((a, b) => a.position - b.position);
   const pairs: ToolCallPair[] = [];
   const resultsMap = new Map<string, ToolResult>();
 
   // First pass: collect all results
-  for (const msg of messages) {
+  for (const msg of ordered) {
     if (msg.toolResult) {
       resultsMap.set(msg.toolResult.callId, msg.toolResult);
     }
   }
 
   // Second pass: pair calls with results
-  for (const msg of messages) {
+  for (const msg of ordered) {
     if (msg.toolCall) {
       pairs.push({
         call: msg.toolCall,

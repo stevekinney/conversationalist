@@ -11,13 +11,14 @@ import {
   appendSystemMessage,
   appendUserMessage,
   collapseSystemMessages,
-  computeConversationStatistics,
   createConversation,
   deserializeConversation,
-  getConversationMessages,
   getFirstSystemMessage,
   getMessageAtPosition,
-  getMessageByIdentifier,
+  getMessageById,
+  getMessageIds,
+  getMessages,
+  getStatistics,
   getSystemMessages,
   hasSystemMessage,
   prependSystemMessage,
@@ -40,13 +41,13 @@ import {
 } from './streaming';
 import type {
   Conversation,
-  ConversationHistoryJSON,
-  HistoryNodeJSON,
+  ConversationHistorySnapshot,
+  HistoryNodeSnapshot,
+  JSONValue,
   Message,
   MessageInput,
   TokenUsage,
 } from './types';
-import { fromMarkdown, toMarkdown, type ToMarkdownOptions } from './utilities';
 
 /**
  * Event detail for conversation history changes.
@@ -162,6 +163,13 @@ export class ConversationHistory extends EventTarget {
    */
   get current(): Conversation {
     return this.currentNode.conversation;
+  }
+
+  /**
+   * Returns the message IDs for the current conversation.
+   */
+  get ids(): string[] {
+    return getMessageIds(this.current);
   }
 
   /**
@@ -282,54 +290,100 @@ export class ConversationHistory extends EventTarget {
 
   // --- QUERY METHODS ---
 
+  /**
+   * Returns messages from the current conversation.
+   */
   getMessages(options?: { includeHidden?: boolean }): ReadonlyArray<Message> {
-    return getConversationMessages(this.current, options);
+    return getMessages(this.current, options);
   }
 
+  /**
+   * Returns the message at the specified position.
+   */
   getMessageAtPosition(position: number): Message | undefined {
     return getMessageAtPosition(this.current, position);
   }
 
-  getMessageByIdentifier(id: string): Message | undefined {
-    return getMessageByIdentifier(this.current, id);
+  /**
+   * Returns all message IDs for the current conversation in order.
+   */
+  getMessageIds(): string[] {
+    return getMessageIds(this.current);
   }
 
+  /**
+   * Returns the message with the specified ID, if present.
+   */
+  getMessageById(id: string): Message | undefined {
+    return getMessageById(this.current, id);
+  }
+
+  /**
+   * Shorthand for getMessageById.
+   */
+  get(id: string): Message | undefined {
+    return getMessageById(this.current, id);
+  }
+
+  /**
+   * Filters messages using a predicate.
+   */
   searchMessages(predicate: (m: Message) => boolean): Message[] {
     return searchConversationMessages(this.current, predicate);
   }
 
+  /**
+   * Computes basic statistics for the current conversation.
+   */
   getStatistics() {
-    return computeConversationStatistics(this.current);
+    return getStatistics(this.current);
   }
 
+  /**
+   * Returns true if any system message exists in the current conversation.
+   */
   hasSystemMessage(): boolean {
     return hasSystemMessage(this.current);
   }
 
+  /**
+   * Returns the first system message in the current conversation, if any.
+   */
   getFirstSystemMessage(): Message | undefined {
     return getFirstSystemMessage(this.current);
   }
 
+  /**
+   * Returns all system messages in the current conversation.
+   */
   getSystemMessages(): ReadonlyArray<Message> {
     return getSystemMessages(this.current);
   }
 
+  /**
+   * Serializes the current conversation.
+   */
   serialize() {
     return serializeConversation(this.current);
   }
 
+  /**
+   * Converts the current conversation to external chat message format.
+   */
   toChatMessages() {
     return toChatMessages(this.current);
   }
 
-  toMarkdown(options?: ToMarkdownOptions): string {
-    return toMarkdown(this.current, options);
-  }
-
+  /**
+   * Estimates tokens for the current conversation.
+   */
   estimateTokens(estimator?: (message: Message) => number): number {
     return estimateConversationTokens(this.current, estimator, this.env);
   }
 
+  /**
+   * Returns the most recent messages, with optional filtering.
+   */
   getRecentMessages(
     count: number,
     options?: { includeHidden?: boolean; includeSystem?: boolean },
@@ -337,50 +391,80 @@ export class ConversationHistory extends EventTarget {
     return getRecentMessages(this.current, count, options);
   }
 
+  /**
+   * Returns the current streaming message, if any.
+   */
   getStreamingMessage(): Message | undefined {
     return getStreamingMessage(this.current);
   }
 
   // --- MUTATION METHODS ---
 
+  /**
+   * Appends one or more messages to the history.
+   */
   appendMessages(...inputs: MessageInput[]): void {
     this.push(appendMessages(this.current, ...inputs, this.env));
   }
 
+  /**
+   * Appends a user message to the history.
+   */
   appendUserMessage(
     content: MessageInput['content'],
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, JSONValue>,
   ): void {
     this.push(appendUserMessage(this.current, content, metadata, this.env));
   }
 
+  /**
+   * Appends an assistant message to the history.
+   */
   appendAssistantMessage(
     content: MessageInput['content'],
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, JSONValue>,
   ): void {
     this.push(appendAssistantMessage(this.current, content, metadata, this.env));
   }
 
-  appendSystemMessage(content: string, metadata?: Record<string, unknown>): void {
+  /**
+   * Appends a system message to the history.
+   */
+  appendSystemMessage(content: string, metadata?: Record<string, JSONValue>): void {
     this.push(appendSystemMessage(this.current, content, metadata, this.env));
   }
 
-  prependSystemMessage(content: string, metadata?: Record<string, unknown>): void {
+  /**
+   * Prepends a system message to the history.
+   */
+  prependSystemMessage(content: string, metadata?: Record<string, JSONValue>): void {
     this.push(prependSystemMessage(this.current, content, metadata, this.env));
   }
 
-  replaceSystemMessage(content: string, metadata?: Record<string, unknown>): void {
+  /**
+   * Replaces the first system message or prepends one if none exist.
+   */
+  replaceSystemMessage(content: string, metadata?: Record<string, JSONValue>): void {
     this.push(replaceSystemMessage(this.current, content, metadata, this.env));
   }
 
+  /**
+   * Collapses multiple system messages into a single message.
+   */
   collapseSystemMessages(): void {
     this.push(collapseSystemMessages(this.current, this.env));
   }
 
+  /**
+   * Redacts the message at the given position.
+   */
   redactMessageAtPosition(position: number, placeholder?: string): void {
     this.push(redactMessageAtPosition(this.current, position, placeholder, this.env));
   }
 
+  /**
+   * Truncates the conversation from a specific position.
+   */
   truncateFromPosition(
     position: number,
     options?: { preserveSystemMessages?: boolean },
@@ -388,13 +472,19 @@ export class ConversationHistory extends EventTarget {
     this.push(truncateFromPosition(this.current, position, options, this.env));
   }
 
+  /**
+   * Truncates the conversation to fit within a token limit.
+   */
   truncateToTokenLimit(maxTokens: number, options?: TruncateOptions): void {
     this.push(truncateToTokenLimit(this.current, maxTokens, options, this.env));
   }
 
+  /**
+   * Appends a streaming message placeholder and returns its ID.
+   */
   appendStreamingMessage(
     role: 'assistant' | 'user',
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, JSONValue>,
   ): string {
     const { conversation, messageId } = appendStreamingMessage(
       this.current,
@@ -406,25 +496,34 @@ export class ConversationHistory extends EventTarget {
     return messageId;
   }
 
+  /**
+   * Updates a streaming message's content.
+   */
   updateStreamingMessage(messageId: string, content: string): void {
     this.push(updateStreamingMessage(this.current, messageId, content, this.env));
   }
 
+  /**
+   * Finalizes a streaming message and optionally adds metadata or token usage.
+   */
   finalizeStreamingMessage(
     messageId: string,
-    options?: { tokenUsage?: TokenUsage; metadata?: Record<string, unknown> },
+    options?: { tokenUsage?: TokenUsage; metadata?: Record<string, JSONValue> },
   ): void {
     this.push(finalizeStreamingMessage(this.current, messageId, options, this.env));
   }
 
+  /**
+   * Cancels a streaming message by removing it from the conversation.
+   */
   cancelStreamingMessage(messageId: string): void {
     this.push(cancelStreamingMessage(this.current, messageId, this.env));
   }
 
   /**
-   * Serializes the entire history tree and current state to JSON.
+   * Captures the entire history tree and current state in a plain snapshot.
    */
-  toJSON(): ConversationHistoryJSON {
+  snapshot(): ConversationHistorySnapshot {
     const getPath = (node: HistoryNode): number[] => {
       const path: number[] = [];
       let curr = node;
@@ -435,7 +534,7 @@ export class ConversationHistory extends EventTarget {
       return path;
     };
 
-    const serializeNode = (node: HistoryNode): HistoryNodeJSON => ({
+    const serializeNode = (node: HistoryNode): HistoryNodeSnapshot => ({
       conversation: serializeConversation(node.conversation),
       children: node.children.map(serializeNode),
     });
@@ -455,24 +554,18 @@ export class ConversationHistory extends EventTarget {
    * Reconstructs a ConversationHistory instance from JSON.
    */
   static from(
-    json: ConversationHistoryJSON,
+    json: ConversationHistorySnapshot,
     environment?: Partial<ConversationEnvironment>,
   ): ConversationHistory {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call
-    const rootConv = (deserializeConversation as any)(
-      json.root.conversation,
-    ) as Conversation;
+    const rootConv = deserializeConversation(json.root.conversation);
     const history = new ConversationHistory(rootConv, environment);
 
     // Recursive function to build the tree
     const buildTree = (
-      nodeJSON: HistoryNodeJSON,
+      nodeJSON: HistoryNodeSnapshot,
       parentNode: HistoryNode,
     ): HistoryNode => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call
-      const nodeConv = (deserializeConversation as any)(
-        nodeJSON.conversation,
-      ) as Conversation;
+      const nodeConv = deserializeConversation(nodeJSON.conversation);
       const node: HistoryNode = {
         conversation: nodeConv,
         parent: parentNode,
@@ -500,17 +593,6 @@ export class ConversationHistory extends EventTarget {
   }
 
   /**
-   * Creates a ConversationHistory instance from a Markdown string.
-   */
-  static fromMarkdown(
-    markdown: string,
-    environment?: Partial<ConversationEnvironment>,
-  ): ConversationHistory {
-    const conversation = fromMarkdown(markdown);
-    return new ConversationHistory(conversation, environment);
-  }
-
-  /**
    * Binds a function to this history instance.
    * The first argument of the function must be a Conversation.
    * If the function returns a new Conversation, it is automatically pushed to the history.
@@ -521,7 +603,17 @@ export class ConversationHistory extends EventTarget {
       ...args: [...T, Partial<ConversationEnvironment>?]
     ) => R,
   ): (...args: T) => R {
-    return bindToConversationHistory(this, fn);
+    return (...args: T): R => {
+      // We pass the history's environment as the last argument if the function supports it
+      const boundFn = fn as (conversation: Conversation, ...args: unknown[]) => R;
+      const result = boundFn(this.current, ...args, this.env);
+
+      if (isConversation(result)) {
+        this.push(result);
+      }
+
+      return result;
+    };
   }
 
   /**
@@ -552,42 +644,22 @@ export class ConversationHistory extends EventTarget {
 }
 
 /**
- * Binds a function's first argument to a ConversationHistory's current state.
- * If the function returns a Conversation, it is pushed to the history.
- */
-export function bindToConversationHistory<T extends unknown[], R>(
-  history: ConversationHistory,
-  fn: (
-    conversation: Conversation,
-    ...args: [...T, Partial<ConversationEnvironment>?]
-  ) => R,
-): (...args: T) => R {
-  return (...args: T): R => {
-    // We pass the history's environment as the last argument if the function supports it
-    const boundFn = fn as (conversation: Conversation, ...args: unknown[]) => R;
-    const result = boundFn(history.current, ...args, history.env);
-
-    if (isConversation(result)) {
-      history.push(result);
-    }
-
-    return result;
-  };
-}
-
-/**
  * Simple type guard to check if a value is a Conversation.
  */
 function isConversation(value: unknown): value is Conversation {
   return (
     value !== null &&
     typeof value === 'object' &&
+    typeof (value as Conversation).schemaVersion === 'number' &&
     typeof (value as Conversation).id === 'string' &&
     typeof (value as Conversation).status === 'string' &&
     (value as Conversation).metadata !== null &&
     typeof (value as Conversation).metadata === 'object' &&
     Array.isArray((value as Conversation).tags) &&
-    Array.isArray((value as Conversation).messages) &&
+    Array.isArray((value as Conversation).ids) &&
+    typeof (value as Conversation).messages === 'object' &&
+    (value as Conversation).messages !== null &&
+    !Array.isArray((value as Conversation).messages) &&
     typeof (value as Conversation).createdAt === 'string' &&
     typeof (value as Conversation).updatedAt === 'string'
   );

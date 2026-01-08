@@ -3,8 +3,10 @@ import matter from 'gray-matter';
 
 import { copyContent } from '../multi-modal';
 import type {
+  AssistantMessage,
   Conversation,
   ConversationStatus,
+  JSONValue,
   Message,
   MessageRole,
   TokenUsage,
@@ -12,7 +14,11 @@ import type {
   ToolCall,
   ToolResult,
 } from '../types';
-import { messageParts } from './message';
+import { CURRENT_SCHEMA_VERSION } from '../types';
+import { isAssistantMessage, messageParts } from './message';
+import { getOrderedMessages, toIdRecord } from './message-store';
+import { copyToolResult, redactToolResult } from './tool-results';
+import { stripTransientFromRecord } from './transient';
 import { toReadonly } from './type-helpers';
 
 /**
@@ -92,6 +98,112 @@ export function getRoleFromLabel(label: string): MessageRole | undefined {
   return LABEL_TO_ROLE[label];
 }
 
+/** Placeholder used when redacting sensitive data */
+const DEFAULT_REDACTED_PLACEHOLDER = '[REDACTED]';
+
+type ResolvedMarkdownOptions = Required<
+  Pick<
+    ToMarkdownOptions,
+    | 'includeMetadata'
+    | 'stripTransient'
+    | 'includeHidden'
+    | 'redactHiddenContent'
+    | 'redactToolArguments'
+    | 'redactToolResults'
+    | 'redactedPlaceholder'
+  >
+>;
+
+function resolveMarkdownOptions(
+  options: ToMarkdownOptions = {},
+): ResolvedMarkdownOptions {
+  return {
+    includeMetadata: options.includeMetadata ?? false,
+    stripTransient: options.stripTransient ?? false,
+    includeHidden: options.includeHidden ?? true,
+    redactHiddenContent: options.redactHiddenContent ?? false,
+    redactToolArguments: options.redactToolArguments ?? false,
+    redactToolResults: options.redactToolResults ?? false,
+    redactedPlaceholder: options.redactedPlaceholder ?? DEFAULT_REDACTED_PLACEHOLDER,
+  };
+}
+
+function sanitizeMessage(message: Message, options: ResolvedMarkdownOptions): Message {
+  const metadata = options.stripTransient
+    ? stripTransientFromRecord({ ...message.metadata })
+    : { ...message.metadata };
+
+  const content =
+    options.redactHiddenContent && message.hidden
+      ? options.redactedPlaceholder
+      : copyContent(message.content);
+
+  const toolCall = message.toolCall
+    ? {
+        ...message.toolCall,
+        arguments: options.redactToolArguments
+          ? options.redactedPlaceholder
+          : message.toolCall.arguments,
+      }
+    : undefined;
+
+  const toolResult = message.toolResult
+    ? options.redactToolResults
+      ? redactToolResult(message.toolResult, options.redactedPlaceholder)
+      : copyToolResult(message.toolResult)
+    : undefined;
+
+  const baseMessage = {
+    id: message.id,
+    role: message.role,
+    content,
+    position: message.position,
+    createdAt: message.createdAt,
+    metadata: toReadonly(metadata),
+    hidden: message.hidden,
+    toolCall: toolCall ? toReadonly(toolCall) : undefined,
+    toolResult: toolResult ? toReadonly(toolResult) : undefined,
+    tokenUsage: message.tokenUsage ? toReadonly({ ...message.tokenUsage }) : undefined,
+  };
+
+  if (isAssistantMessage(message)) {
+    const assistantMessage: AssistantMessage = {
+      ...baseMessage,
+      role: 'assistant',
+      goalCompleted: message.goalCompleted,
+    };
+    return assistantMessage;
+  }
+
+  return baseMessage;
+}
+
+function prepareConversationForMarkdown(
+  conversation: Conversation,
+  options: ResolvedMarkdownOptions,
+): Conversation {
+  const metadata = options.stripTransient
+    ? stripTransientFromRecord({ ...conversation.metadata })
+    : { ...conversation.metadata };
+
+  const messages = getOrderedMessages(conversation)
+    .filter((message) => options.includeHidden || !message.hidden)
+    .map((message) => sanitizeMessage(message, options));
+
+  return {
+    schemaVersion: conversation.schemaVersion,
+    id: conversation.id,
+    title: conversation.title,
+    status: conversation.status,
+    metadata: toReadonly(metadata),
+    tags: toReadonly([...conversation.tags]),
+    ids: toReadonly(messages.map((message) => message.id)),
+    messages: toReadonly(toIdRecord(messages)),
+    createdAt: conversation.createdAt,
+    updatedAt: conversation.updatedAt,
+  };
+}
+
 /**
  * Formats a message's content for markdown output.
  * Text parts are appended in order, images are rendered as markdown image syntax on their own lines.
@@ -122,7 +234,7 @@ function formatMessageContent(message: Message): string {
 interface MessageFrontmatter {
   position: number;
   createdAt: string;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, JSONValue>;
   hidden: boolean;
   content?: MultiModalContent[];
   toolCall?: ToolCall;
@@ -135,10 +247,11 @@ interface MessageFrontmatter {
  * Metadata stored in YAML frontmatter for conversation-level data.
  */
 interface ConversationFrontmatter {
+  schemaVersion?: number;
   id: string;
   title?: string;
   status: ConversationStatus;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, JSONValue>;
   tags: string[];
   createdAt: string;
   updatedAt: string;
@@ -170,13 +283,14 @@ export function toMarkdown(
   conversation: Conversation,
   options: ToMarkdownOptions = {},
 ): string {
-  const { includeMetadata = false } = options;
+  const resolved = resolveMarkdownOptions(options);
+  const prepared = prepareConversationForMarkdown(conversation, resolved);
 
-  if (includeMetadata) {
-    return toMarkdownWithMetadata(conversation);
+  if (resolved.includeMetadata) {
+    return toMarkdownWithMetadata(prepared, resolved);
   }
 
-  return toMarkdownSimple(conversation);
+  return toMarkdownSimple(prepared);
 }
 
 /**
@@ -185,7 +299,7 @@ export function toMarkdown(
 function toMarkdownSimple(conversation: Conversation): string {
   const sections: string[] = [];
 
-  for (const message of conversation.messages) {
+  for (const message of getOrderedMessages(conversation)) {
     const roleName = ROLE_DISPLAY_NAMES[message.role];
     const header = `### ${roleName}`;
     const content = formatMessageContent(message);
@@ -198,11 +312,14 @@ function toMarkdownSimple(conversation: Conversation): string {
 /**
  * Outputs markdown with full metadata for lossless round-trip conversion.
  */
-function toMarkdownWithMetadata(conversation: Conversation): string {
+function toMarkdownWithMetadata(
+  conversation: Conversation,
+  _options: ResolvedMarkdownOptions,
+): string {
   // Build messages metadata map
   const messagesMetadata: Record<string, MessageFrontmatter> = {};
 
-  for (const message of conversation.messages) {
+  for (const message of getOrderedMessages(conversation)) {
     const messageMeta: MessageFrontmatter = {
       position: message.position,
       createdAt: message.createdAt,
@@ -224,7 +341,7 @@ function toMarkdownWithMetadata(conversation: Conversation): string {
     if (message.tokenUsage) {
       messageMeta.tokenUsage = { ...message.tokenUsage };
     }
-    if (message.goalCompleted !== undefined) {
+    if (isAssistantMessage(message) && message.goalCompleted !== undefined) {
       messageMeta.goalCompleted = message.goalCompleted;
     }
 
@@ -232,6 +349,7 @@ function toMarkdownWithMetadata(conversation: Conversation): string {
   }
 
   const frontmatterData: ConversationFrontmatter = {
+    schemaVersion: conversation.schemaVersion,
     id: conversation.id,
     status: conversation.status,
     metadata: { ...conversation.metadata },
@@ -249,7 +367,7 @@ function toMarkdownWithMetadata(conversation: Conversation): string {
   // Build message body
   const messageSections: string[] = [];
 
-  for (const message of conversation.messages) {
+  for (const message of getOrderedMessages(conversation)) {
     const roleName = ROLE_DISPLAY_NAMES[message.role];
     const header = `### ${roleName} (${message.id})`;
     const content = formatMessageContent(message);
@@ -362,7 +480,7 @@ function parseMarkdownWithMetadata(trimmed: string): Conversation {
       content = contentBody?.trim() ?? '';
     }
 
-    const message: Message = {
+    const baseMessage = {
       id: messageId!,
       role,
       content,
@@ -379,19 +497,28 @@ function parseMarkdownWithMetadata(trimmed: string): Conversation {
       tokenUsage: messageMeta.tokenUsage
         ? toReadonly({ ...messageMeta.tokenUsage })
         : undefined,
-      goalCompleted: messageMeta.goalCompleted,
     };
+    let message: Message | AssistantMessage = baseMessage;
+    if (role === 'assistant') {
+      message = {
+        ...baseMessage,
+        role: 'assistant',
+        goalCompleted: messageMeta.goalCompleted,
+      };
+    }
 
     messages.push(toReadonly(message) as Message);
   }
 
   const conversation: Conversation = {
+    schemaVersion: frontmatter.schemaVersion ?? CURRENT_SCHEMA_VERSION,
     id: frontmatter.id,
     title: frontmatter.title,
     status: frontmatter.status ?? 'active',
     metadata: toReadonly({ ...frontmatter.metadata }),
     tags: toReadonly([...(frontmatter.tags ?? [])]),
-    messages: toReadonly(messages),
+    ids: toReadonly(messages.map((message) => message.id)),
+    messages: toReadonly(toIdRecord(messages)),
     createdAt: frontmatter.createdAt,
     updatedAt: frontmatter.updatedAt,
   };
@@ -435,11 +562,13 @@ function parseMarkdownSimple(body: string): Conversation {
   }
 
   const conversation: Conversation = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     id: generateId(),
     status: 'active',
     metadata: toReadonly({}),
     tags: toReadonly([]),
-    messages: toReadonly(messages),
+    ids: toReadonly(messages.map((message) => message.id)),
+    messages: toReadonly(toIdRecord(messages)),
     createdAt: now,
     updatedAt: now,
   };

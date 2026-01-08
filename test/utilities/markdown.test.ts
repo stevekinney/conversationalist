@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { Conversation, Message, MessageRole } from '../../src/types';
+import { isAssistantMessage } from '../../src';
 import {
   fromMarkdown,
   getRoleFromLabel,
@@ -9,22 +9,54 @@ import {
   MarkdownParseError,
   ROLE_LABELS,
   toMarkdown,
-} from '../../src/utilities/markdown';
+} from '../../src/markdown';
+import type {
+  AssistantMessage,
+  Conversation,
+  Message,
+  MessageRole,
+} from '../../src/types';
+
+type ConversationMessage = Message | AssistantMessage;
+
+type ConversationOverrides = Partial<Omit<Conversation, 'messages' | 'ids'>> & {
+  messages?: ConversationMessage[];
+  ids?: string[];
+};
+
+const toMessageRecord = (messages: ConversationMessage[]): Record<string, Message> =>
+  messages.reduce<Record<string, Message>>((acc, message) => {
+    acc[message.id] = message;
+    return acc;
+  }, {});
+
+const getOrderedMessages = (conversation: Conversation): Message[] =>
+  conversation.ids
+    .map((id) => conversation.messages[id])
+    .filter((message): message is Message => Boolean(message));
 
 describe('toMarkdown', () => {
   const createConversation = (
-    messages: Conversation['messages'],
-    overrides: Partial<Conversation> = {},
-  ): Conversation => ({
-    id: 'conv-1',
-    status: 'active',
-    metadata: {},
-    tags: [],
-    messages,
-    createdAt: '2024-01-15T10:00:00.000Z',
-    updatedAt: '2024-01-15T10:00:00.000Z',
-    ...overrides,
-  });
+    messages: ConversationMessage[],
+    overrides: ConversationOverrides = {},
+  ): Conversation => {
+    const { messages: overrideMessages, ids, ...rest } = overrides;
+    const baseMessages = overrideMessages ?? messages;
+    const baseIds = ids ?? baseMessages.map((message) => message.id);
+
+    return {
+      schemaVersion: 1,
+      id: 'conv-1',
+      status: 'active',
+      metadata: {},
+      tags: [],
+      createdAt: '2024-01-15T10:00:00.000Z',
+      updatedAt: '2024-01-15T10:00:00.000Z',
+      ...rest,
+      messages: toMessageRecord(baseMessages),
+      ids: baseIds,
+    };
+  };
 
   describe('default behavior (no metadata)', () => {
     test('outputs empty string for empty conversation', () => {
@@ -212,6 +244,7 @@ describe('toMarkdown', () => {
 
       const result = toMarkdown(conversation, { includeMetadata: true });
       expect(result).toContain('---');
+      expect(result).toContain('schemaVersion:');
       expect(result).toContain('id: conv-123');
       expect(result).toContain('title: Test Conversation');
       expect(result).toContain('status: archived');
@@ -310,18 +343,17 @@ describe('toMarkdown', () => {
     });
 
     test('includes goalCompleted in message metadata', () => {
-      const conversation = createConversation([
-        {
-          id: 'msg-1',
-          role: 'assistant',
-          content: 'Task complete',
-          position: 0,
-          createdAt: '2024-01-15T10:00:00.000Z',
-          metadata: {},
-          hidden: false,
-          goalCompleted: true,
-        },
-      ]);
+      const assistantMessage: AssistantMessage = {
+        id: 'msg-1',
+        role: 'assistant',
+        content: 'Task complete',
+        position: 0,
+        createdAt: '2024-01-15T10:00:00.000Z',
+        metadata: {},
+        hidden: false,
+        goalCompleted: true,
+      };
+      const conversation = createConversation([assistantMessage]);
 
       const result = toMarkdown(conversation, { includeMetadata: true });
       expect(result).toContain('goalCompleted: true');
@@ -348,13 +380,153 @@ describe('toMarkdown', () => {
       expect(result).toContain('mimeType: image/png');
     });
   });
+
+  describe('export options', () => {
+    test('omits hidden messages when includeHidden is false', () => {
+      const conversation = createConversation([
+        {
+          id: 'msg-1',
+          role: 'user',
+          content: 'Visible',
+          position: 0,
+          createdAt: '2024-01-15T10:00:00.000Z',
+          metadata: {},
+          hidden: false,
+        },
+        {
+          id: 'msg-2',
+          role: 'system',
+          content: 'Secret',
+          position: 1,
+          createdAt: '2024-01-15T10:01:00.000Z',
+          metadata: {},
+          hidden: true,
+        },
+      ]);
+
+      const result = toMarkdown(conversation, { includeHidden: false });
+      expect(result).toContain('Visible');
+      expect(result).not.toContain('Secret');
+      expect(result).not.toContain('### System');
+    });
+
+    test('redacts hidden message content when requested', () => {
+      const conversation = createConversation([
+        {
+          id: 'msg-1',
+          role: 'user',
+          content: 'Visible',
+          position: 0,
+          createdAt: '2024-01-15T10:00:00.000Z',
+          metadata: {},
+          hidden: false,
+        },
+        {
+          id: 'msg-2',
+          role: 'system',
+          content: 'Secret',
+          position: 1,
+          createdAt: '2024-01-15T10:01:00.000Z',
+          metadata: {},
+          hidden: true,
+        },
+      ]);
+
+      const result = toMarkdown(conversation, {
+        redactHiddenContent: true,
+        redactedPlaceholder: '[HIDDEN]',
+      });
+
+      expect(result).toContain('### System');
+      expect(result).toContain('[HIDDEN]');
+      expect(result).not.toContain('Secret');
+    });
+
+    test('stripTransient removes transient metadata in frontmatter', () => {
+      const conversation = createConversation(
+        [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            position: 0,
+            createdAt: '2024-01-15T10:00:00.000Z',
+            metadata: { _temp: 'nope', source: 'web' },
+            hidden: false,
+          },
+        ],
+        {
+          metadata: { _draft: true, owner: 'test' },
+        },
+      );
+
+      const result = toMarkdown(conversation, {
+        includeMetadata: true,
+        stripTransient: true,
+      });
+
+      expect(result).toContain('owner: test');
+      expect(result).toContain('source: web');
+      expect(result).not.toContain('_draft');
+      expect(result).not.toContain('_temp');
+    });
+
+    test('redacts tool metadata in markdown frontmatter', () => {
+      const conversation = createConversation([
+        {
+          id: 'msg-1',
+          role: 'tool-use',
+          content: 'Calling tool',
+          position: 0,
+          createdAt: '2024-01-15T10:00:00.000Z',
+          metadata: {},
+          hidden: false,
+          toolCall: { id: 'call-1', name: 'search', arguments: 'secret args' },
+        },
+        {
+          id: 'msg-2',
+          role: 'tool-result',
+          content: 'Result',
+          position: 1,
+          createdAt: '2024-01-15T10:01:00.000Z',
+          metadata: {},
+          hidden: false,
+          toolResult: {
+            callId: 'call-1',
+            outcome: 'error',
+            content: 'secret result',
+            toolCallId: 'call-1',
+            toolName: 'search',
+            result: { status: 'secret payload' },
+            error: 'secret error',
+          },
+        },
+      ]);
+
+      const result = toMarkdown(conversation, {
+        includeMetadata: true,
+        redactToolArguments: true,
+        redactToolResults: true,
+        redactedPlaceholder: '[MASKED]',
+      });
+
+      expect(result).toContain('[MASKED]');
+      expect(result).not.toContain('secret args');
+      expect(result).not.toContain('secret result');
+      expect(result).not.toContain('secret payload');
+      expect(result).not.toContain('secret error');
+      expect(result).toContain('call-1');
+      expect(result).toContain('search');
+    });
+
+  });
 });
 
 describe('fromMarkdown', () => {
   describe('simple markdown (without metadata)', () => {
     test('parses empty markdown to empty conversation', () => {
       const conversation = fromMarkdown('');
-      expect(conversation.messages).toHaveLength(0);
+      expect(getOrderedMessages(conversation)).toHaveLength(0);
       expect(conversation.status).toBe('active');
       expect(conversation.metadata).toEqual({});
       expect(conversation.tags).toEqual([]);
@@ -366,11 +538,11 @@ describe('fromMarkdown', () => {
 Hello, world!`;
 
       const conversation = fromMarkdown(markdown);
-      expect(conversation.messages).toHaveLength(1);
-      expect(conversation.messages[0].role).toBe('user');
-      expect(conversation.messages[0].content).toBe('Hello, world!');
-      expect(conversation.messages[0].hidden).toBe(false);
-      expect(conversation.messages[0].metadata).toEqual({});
+      expect(getOrderedMessages(conversation)).toHaveLength(1);
+      expect(getOrderedMessages(conversation)[0].role).toBe('user');
+      expect(getOrderedMessages(conversation)[0].content).toBe('Hello, world!');
+      expect(getOrderedMessages(conversation)[0].hidden).toBe(false);
+      expect(getOrderedMessages(conversation)[0].metadata).toEqual({});
     });
 
     test('generates unique IDs for conversation and messages', () => {
@@ -384,7 +556,7 @@ Hello`;
       expect(conv1.id).toBeTruthy();
       expect(conv2.id).toBeTruthy();
       expect(conv1.id).not.toBe(conv2.id);
-      expect(conv1.messages[0].id).not.toBe(conv2.messages[0].id);
+      expect(getOrderedMessages(conv1)[0].id).not.toBe(getOrderedMessages(conv2)[0].id);
     });
 
     test('assigns positions based on message order', () => {
@@ -401,9 +573,9 @@ Second
 Third`;
 
       const conversation = fromMarkdown(markdown);
-      expect(conversation.messages[0].position).toBe(0);
-      expect(conversation.messages[1].position).toBe(1);
-      expect(conversation.messages[2].position).toBe(2);
+      expect(getOrderedMessages(conversation)[0].position).toBe(0);
+      expect(getOrderedMessages(conversation)[1].position).toBe(1);
+      expect(getOrderedMessages(conversation)[2].position).toBe(2);
     });
 
     test('parses all role types correctly', () => {
@@ -436,13 +608,13 @@ TR
 SN`;
 
       const conversation = fromMarkdown(markdown);
-      expect(conversation.messages[0].role).toBe('user');
-      expect(conversation.messages[1].role).toBe('assistant');
-      expect(conversation.messages[2].role).toBe('system');
-      expect(conversation.messages[3].role).toBe('developer');
-      expect(conversation.messages[4].role).toBe('tool-use');
-      expect(conversation.messages[5].role).toBe('tool-result');
-      expect(conversation.messages[6].role).toBe('snapshot');
+      expect(getOrderedMessages(conversation)[0].role).toBe('user');
+      expect(getOrderedMessages(conversation)[1].role).toBe('assistant');
+      expect(getOrderedMessages(conversation)[2].role).toBe('system');
+      expect(getOrderedMessages(conversation)[3].role).toBe('developer');
+      expect(getOrderedMessages(conversation)[4].role).toBe('tool-use');
+      expect(getOrderedMessages(conversation)[5].role).toBe('tool-result');
+      expect(getOrderedMessages(conversation)[6].role).toBe('snapshot');
     });
 
     test('throws MarkdownParseError for unknown role', () => {
@@ -521,7 +693,7 @@ messages: {}
       const conversation = fromMarkdown(markdown);
       expect(conversation.id).toBe('conv-1');
       expect(conversation.status).toBe('active');
-      expect(conversation.messages).toHaveLength(0);
+      expect(getOrderedMessages(conversation)).toHaveLength(0);
     });
 
     test('parses conversation with title', () => {
@@ -581,12 +753,12 @@ messages:
 Hello, world!`;
 
       const conversation = fromMarkdown(markdown);
-      expect(conversation.messages).toHaveLength(1);
-      expect(conversation.messages[0].id).toBe('msg-1');
-      expect(conversation.messages[0].role).toBe('user');
-      expect(conversation.messages[0].content).toBe('Hello, world!');
-      expect(conversation.messages[0].position).toBe(0);
-      expect(conversation.messages[0].hidden).toBe(false);
+      expect(getOrderedMessages(conversation)).toHaveLength(1);
+      expect(getOrderedMessages(conversation)[0].id).toBe('msg-1');
+      expect(getOrderedMessages(conversation)[0].role).toBe('user');
+      expect(getOrderedMessages(conversation)[0].content).toBe('Hello, world!');
+      expect(getOrderedMessages(conversation)[0].position).toBe(0);
+      expect(getOrderedMessages(conversation)[0].hidden).toBe(false);
     });
 
     test('parses multiple messages', () => {
@@ -619,9 +791,9 @@ Hi there
 Hello! How can I help?`;
 
       const conversation = fromMarkdown(markdown);
-      expect(conversation.messages).toHaveLength(2);
-      expect(conversation.messages[0].role).toBe('user');
-      expect(conversation.messages[1].role).toBe('assistant');
+      expect(getOrderedMessages(conversation)).toHaveLength(2);
+      expect(getOrderedMessages(conversation)[0].role).toBe('user');
+      expect(getOrderedMessages(conversation)[1].role).toBe('assistant');
     });
 
     test('parses multi-modal content from metadata', () => {
@@ -653,7 +825,7 @@ Check this:
 ![image](https://example.com/img.png)`;
 
       const conversation = fromMarkdown(markdown);
-      const content = conversation.messages[0].content as readonly { type: string }[];
+      const content = getOrderedMessages(conversation)[0].content as readonly { type: string }[];
       expect(Array.isArray(content)).toBe(true);
       expect(content).toHaveLength(2);
       expect(content[0].type).toBe('text');
@@ -687,10 +859,10 @@ messages:
 Calling search`;
 
       const conversation = fromMarkdown(markdown);
-      expect(conversation.messages[0].toolCall).toBeDefined();
-      expect(conversation.messages[0].toolCall?.id).toBe('call-1');
-      expect(conversation.messages[0].toolCall?.name).toBe('search');
-      expect(conversation.messages[0].toolCall?.arguments).toEqual({ query: 'test' });
+      expect(getOrderedMessages(conversation)[0].toolCall).toBeDefined();
+      expect(getOrderedMessages(conversation)[0].toolCall?.id).toBe('call-1');
+      expect(getOrderedMessages(conversation)[0].toolCall?.name).toBe('search');
+      expect(getOrderedMessages(conversation)[0].toolCall?.arguments).toEqual({ query: 'test' });
     });
 
     test('parses toolResult metadata', () => {
@@ -718,9 +890,9 @@ messages:
 Search results`;
 
       const conversation = fromMarkdown(markdown);
-      expect(conversation.messages[0].toolResult).toBeDefined();
-      expect(conversation.messages[0].toolResult?.callId).toBe('call-1');
-      expect(conversation.messages[0].toolResult?.outcome).toBe('success');
+      expect(getOrderedMessages(conversation)[0].toolResult).toBeDefined();
+      expect(getOrderedMessages(conversation)[0].toolResult?.callId).toBe('call-1');
+      expect(getOrderedMessages(conversation)[0].toolResult?.outcome).toBe('success');
     });
 
     test('parses tokenUsage metadata', () => {
@@ -748,10 +920,10 @@ messages:
 Response`;
 
       const conversation = fromMarkdown(markdown);
-      expect(conversation.messages[0].tokenUsage).toBeDefined();
-      expect(conversation.messages[0].tokenUsage?.prompt).toBe(100);
-      expect(conversation.messages[0].tokenUsage?.completion).toBe(50);
-      expect(conversation.messages[0].tokenUsage?.total).toBe(150);
+      expect(getOrderedMessages(conversation)[0].tokenUsage).toBeDefined();
+      expect(getOrderedMessages(conversation)[0].tokenUsage?.prompt).toBe(100);
+      expect(getOrderedMessages(conversation)[0].tokenUsage?.completion).toBe(50);
+      expect(getOrderedMessages(conversation)[0].tokenUsage?.total).toBe(150);
     });
 
     test('parses goalCompleted metadata', () => {
@@ -776,7 +948,8 @@ messages:
 Task complete`;
 
       const conversation = fromMarkdown(markdown);
-      expect(conversation.messages[0].goalCompleted).toBe(true);
+      const message = getOrderedMessages(conversation)[0];
+      expect(isAssistantMessage(message) && message.goalCompleted).toBe(true);
     });
   });
 });
@@ -792,20 +965,40 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     hidden: false,
     ...overrides,
   });
-
-  const createConversation = (
-    messages: Message[],
-    overrides: Partial<Conversation> = {},
-  ): Conversation => ({
-    id: 'conv-1',
-    status: 'active',
-    metadata: {},
-    tags: [],
-    messages,
+  const createAssistantMessage = (
+    overrides: Partial<AssistantMessage> = {},
+  ): AssistantMessage => ({
+    id: 'msg-1',
+    role: 'assistant',
+    content: 'Hello',
+    position: 0,
     createdAt: '2024-01-15T10:00:00.000Z',
-    updatedAt: '2024-01-15T10:00:00.000Z',
+    metadata: {},
+    hidden: false,
     ...overrides,
   });
+
+  const createConversation = (
+    messages: ConversationMessage[],
+    overrides: ConversationOverrides = {},
+  ): Conversation => {
+    const { messages: overrideMessages, ids, ...rest } = overrides;
+    const baseMessages = overrideMessages ?? messages;
+    const baseIds = ids ?? baseMessages.map((message) => message.id);
+
+    return {
+      schemaVersion: 1,
+      id: 'conv-1',
+      status: 'active',
+      metadata: {},
+      tags: [],
+      createdAt: '2024-01-15T10:00:00.000Z',
+      updatedAt: '2024-01-15T10:00:00.000Z',
+      ...rest,
+      messages: toMessageRecord(baseMessages),
+      ids: baseIds,
+    };
+  };
 
   test('round-trip preserves empty conversation', () => {
     const original = createConversation([]);
@@ -816,7 +1009,7 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     expect(parsed.status).toBe(original.status);
     expect(parsed.metadata).toEqual(original.metadata);
     expect(parsed.tags).toEqual([...original.tags]);
-    expect(parsed.messages).toHaveLength(0);
+    expect(getOrderedMessages(parsed)).toHaveLength(0);
     expect(parsed.createdAt).toBe(original.createdAt);
     expect(parsed.updatedAt).toBe(original.updatedAt);
   });
@@ -866,9 +1059,9 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages).toHaveLength(1);
-    expect(parsed.messages[0].id).toBe('msg-1');
-    expect(parsed.messages[0].content).toBe('Hello, world!');
+    expect(getOrderedMessages(parsed)).toHaveLength(1);
+    expect(getOrderedMessages(parsed)[0].id).toBe('msg-1');
+    expect(getOrderedMessages(parsed)[0].content).toBe('Hello, world!');
   });
 
   test('round-trip preserves all message roles', () => {
@@ -894,9 +1087,9 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages).toHaveLength(7);
+    expect(getOrderedMessages(parsed)).toHaveLength(7);
     for (let i = 0; i < roles.length; i++) {
-      expect(parsed.messages[i].role).toBe(roles[i]);
+      expect(getOrderedMessages(parsed)[i].role).toBe(roles[i]);
     }
   });
 
@@ -909,7 +1102,7 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages[0].metadata).toEqual(original.messages[0].metadata);
+    expect(getOrderedMessages(parsed)[0].metadata).toEqual(getOrderedMessages(original)[0].metadata);
   });
 
   test('round-trip preserves hidden flag', () => {
@@ -917,7 +1110,7 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages[0].hidden).toBe(true);
+    expect(getOrderedMessages(parsed)[0].hidden).toBe(true);
   });
 
   test('round-trip preserves message positions', () => {
@@ -929,9 +1122,9 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages[0].position).toBe(0);
-    expect(parsed.messages[1].position).toBe(1);
-    expect(parsed.messages[2].position).toBe(2);
+    expect(getOrderedMessages(parsed)[0].position).toBe(0);
+    expect(getOrderedMessages(parsed)[1].position).toBe(1);
+    expect(getOrderedMessages(parsed)[2].position).toBe(2);
   });
 
   test('round-trip preserves message timestamps', () => {
@@ -941,7 +1134,7 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages[0].createdAt).toBe('2024-06-15T14:30:45.123Z');
+    expect(getOrderedMessages(parsed)[0].createdAt).toBe('2024-06-15T14:30:45.123Z');
   });
 
   test('round-trip preserves toolCall', () => {
@@ -958,7 +1151,7 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages[0].toolCall).toEqual(original.messages[0].toolCall);
+    expect(getOrderedMessages(parsed)[0].toolCall).toEqual(getOrderedMessages(original)[0].toolCall);
   });
 
   test('round-trip preserves toolResult', () => {
@@ -975,7 +1168,7 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages[0].toolResult).toEqual(original.messages[0].toolResult);
+    expect(getOrderedMessages(parsed)[0].toolResult).toEqual(getOrderedMessages(original)[0].toolResult);
   });
 
   test('round-trip preserves tokenUsage', () => {
@@ -987,15 +1180,18 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages[0].tokenUsage).toEqual(original.messages[0].tokenUsage);
+    expect(getOrderedMessages(parsed)[0].tokenUsage).toEqual(getOrderedMessages(original)[0].tokenUsage);
   });
 
   test('round-trip preserves goalCompleted', () => {
-    const original = createConversation([createMessage({ goalCompleted: true })]);
+    const original = createConversation([
+      createAssistantMessage({ goalCompleted: true }),
+    ]);
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages[0].goalCompleted).toBe(true);
+    const message = getOrderedMessages(parsed)[0];
+    expect(isAssistantMessage(message) && message.goalCompleted).toBe(true);
   });
 
   test('round-trip preserves multi-modal content with images', () => {
@@ -1015,7 +1211,7 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    const content = parsed.messages[0].content as readonly { type: string }[];
+    const content = getOrderedMessages(parsed)[0].content as readonly { type: string }[];
     expect(Array.isArray(content)).toBe(true);
     expect(content).toHaveLength(2);
     expect(content[0]).toEqual({ type: 'text', text: 'Check out this image:' });
@@ -1042,81 +1238,85 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(parsed.messages[0].content).toEqual(original.messages[0].content);
+    expect(getOrderedMessages(parsed)[0].content).toEqual(getOrderedMessages(original)[0].content);
   });
 
   test('round-trip preserves complete complex conversation', () => {
+    const originalMessages: ConversationMessage[] = [
+      {
+        id: 'msg-sys',
+        role: 'system',
+        content: 'You are a helpful assistant.',
+        position: 0,
+        createdAt: '2024-01-15T10:00:00.000Z',
+        metadata: {},
+        hidden: true,
+      },
+      {
+        id: 'msg-user-1',
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Can you analyze this receipt?' },
+          {
+            type: 'image',
+            url: 'https://example.com/receipt.jpg',
+            mimeType: 'image/jpeg',
+            text: 'Receipt image',
+          },
+        ],
+        position: 1,
+        createdAt: '2024-01-15T10:01:00.000Z',
+        metadata: { source: 'mobile-app' },
+        hidden: false,
+      },
+      {
+        id: 'msg-tool-use',
+        role: 'tool-use',
+        content: 'Analyzing image...',
+        position: 2,
+        createdAt: '2024-01-15T10:01:05.000Z',
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'call-ocr', name: 'analyze_image', arguments: { mode: 'ocr' } },
+      },
+      {
+        id: 'msg-tool-result',
+        role: 'tool-result',
+        content: 'OCR completed',
+        position: 3,
+        createdAt: '2024-01-15T10:01:10.000Z',
+        metadata: {},
+        hidden: false,
+        toolResult: {
+          callId: 'call-ocr',
+          outcome: 'success',
+          content: { text: 'Total: $42.50', confidence: 0.98 },
+        },
+      },
+      {
+        id: 'msg-assistant',
+        role: 'assistant',
+        content: 'The receipt shows a total of $42.50.',
+        position: 4,
+        createdAt: '2024-01-15T10:01:15.000Z',
+        metadata: { model: 'gpt-4' },
+        hidden: false,
+        tokenUsage: { prompt: 150, completion: 30, total: 180 },
+        goalCompleted: true,
+      },
+    ];
+
     const original: Conversation = {
+      schemaVersion: 1,
       id: 'conv-complex-123',
       title: 'Complex Test Conversation',
       status: 'archived',
       metadata: { department: 'support', priority: 'high' },
       tags: ['urgent', 'billing', 'resolved'],
+      ids: originalMessages.map((message) => message.id),
       createdAt: '2024-01-15T10:00:00.000Z',
       updatedAt: '2024-01-15T12:30:00.000Z',
-      messages: [
-        {
-          id: 'msg-sys',
-          role: 'system',
-          content: 'You are a helpful assistant.',
-          position: 0,
-          createdAt: '2024-01-15T10:00:00.000Z',
-          metadata: {},
-          hidden: true,
-        },
-        {
-          id: 'msg-user-1',
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Can you analyze this receipt?' },
-            {
-              type: 'image',
-              url: 'https://example.com/receipt.jpg',
-              mimeType: 'image/jpeg',
-              text: 'Receipt image',
-            },
-          ],
-          position: 1,
-          createdAt: '2024-01-15T10:01:00.000Z',
-          metadata: { source: 'mobile-app' },
-          hidden: false,
-        },
-        {
-          id: 'msg-tool-use',
-          role: 'tool-use',
-          content: 'Analyzing image...',
-          position: 2,
-          createdAt: '2024-01-15T10:01:05.000Z',
-          metadata: {},
-          hidden: false,
-          toolCall: { id: 'call-ocr', name: 'analyze_image', arguments: { mode: 'ocr' } },
-        },
-        {
-          id: 'msg-tool-result',
-          role: 'tool-result',
-          content: 'OCR completed',
-          position: 3,
-          createdAt: '2024-01-15T10:01:10.000Z',
-          metadata: {},
-          hidden: false,
-          toolResult: {
-            callId: 'call-ocr',
-            outcome: 'success',
-            content: { text: 'Total: $42.50', confidence: 0.98 },
-          },
-        },
-        {
-          id: 'msg-assistant',
-          role: 'assistant',
-          content: 'The receipt shows a total of $42.50.',
-          position: 4,
-          createdAt: '2024-01-15T10:01:15.000Z',
-          metadata: { model: 'gpt-4' },
-          hidden: false,
-          tokenUsage: { prompt: 150, completion: 30, total: 180 },
-          goalCompleted: true,
-        },
-      ],
+      messages: toMessageRecord(originalMessages),
     };
 
     const markdown = toMarkdown(original, { includeMetadata: true });
@@ -1132,12 +1332,12 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     expect(parsed.updatedAt).toBe(original.updatedAt);
 
     // Verify message count
-    expect(parsed.messages).toHaveLength(5);
+    expect(getOrderedMessages(parsed)).toHaveLength(5);
 
     // Verify each message
-    for (let i = 0; i < original.messages.length; i++) {
-      const originalMsg = original.messages[i];
-      const parsedMsg = parsed.messages[i];
+    for (let i = 0; i < getOrderedMessages(original).length; i++) {
+      const originalMsg = getOrderedMessages(original)[i];
+      const parsedMsg = getOrderedMessages(parsed)[i];
 
       expect(parsedMsg.id).toBe(originalMsg.id);
       expect(parsedMsg.role).toBe(originalMsg.role);
@@ -1148,7 +1348,10 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
       expect(parsedMsg.toolCall).toEqual(originalMsg.toolCall);
       expect(parsedMsg.toolResult).toEqual(originalMsg.toolResult);
       expect(parsedMsg.tokenUsage).toEqual(originalMsg.tokenUsage);
-      expect(parsedMsg.goalCompleted).toBe(originalMsg.goalCompleted);
+      if (isAssistantMessage(originalMsg)) {
+        expect(isAssistantMessage(parsedMsg)).toBe(true);
+        expect(parsedMsg.goalCompleted).toBe(originalMsg.goalCompleted);
+      }
 
       // Content comparison
       if (Array.isArray(originalMsg.content)) {

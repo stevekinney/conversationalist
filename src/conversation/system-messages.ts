@@ -3,14 +3,15 @@ import {
   resolveConversationEnvironment,
 } from '../environment';
 import { copyContent } from '../multi-modal';
-import type { Conversation, Message } from '../types';
+import type { Conversation, JSONValue, Message } from '../types';
 import { createMessage, toReadonly } from '../utilities';
+import { getOrderedMessages, toIdRecord } from '../utilities/message-store';
 
 /**
  * Checks if a conversation contains any system messages.
  */
 export function hasSystemMessage(conversation: Conversation): boolean {
-  return conversation.messages.some((m) => m.role === 'system');
+  return getOrderedMessages(conversation).some((m) => m.role === 'system');
 }
 
 /**
@@ -18,14 +19,14 @@ export function hasSystemMessage(conversation: Conversation): boolean {
  * Returns undefined if no system message exists.
  */
 export function getFirstSystemMessage(conversation: Conversation): Message | undefined {
-  return conversation.messages.find((m) => m.role === 'system');
+  return getOrderedMessages(conversation).find((m) => m.role === 'system');
 }
 
 /**
  * Returns all system messages in the conversation.
  */
 export function getSystemMessages(conversation: Conversation): ReadonlyArray<Message> {
-  return conversation.messages.filter((m) => m.role === 'system');
+  return getOrderedMessages(conversation).filter((m) => m.role === 'system');
 }
 
 /**
@@ -35,7 +36,7 @@ export function getSystemMessages(conversation: Conversation): ReadonlyArray<Mes
 export function prependSystemMessage(
   conversation: Conversation,
   content: string,
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   const resolvedEnvironment = resolveConversationEnvironment(environment);
@@ -54,7 +55,8 @@ export function prependSystemMessage(
     tokenUsage: undefined,
   });
 
-  const renumberedMessages = conversation.messages.map((message) =>
+  const ordered = getOrderedMessages(conversation);
+  const renumberedMessages = ordered.map((message) =>
     createMessage({
       id: message.id,
       role: message.role,
@@ -71,7 +73,8 @@ export function prependSystemMessage(
 
   return toReadonly({
     ...conversation,
-    messages: [newMessage, ...renumberedMessages],
+    ids: [newMessage.id, ...ordered.map((message) => message.id)],
+    messages: toIdRecord([newMessage, ...renumberedMessages]),
     updatedAt: now,
   });
 }
@@ -83,18 +86,19 @@ export function prependSystemMessage(
 export function replaceSystemMessage(
   conversation: Conversation,
   content: string,
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
-  const firstSystemIndex = conversation.messages.findIndex((m) => m.role === 'system');
+  const ordered = getOrderedMessages(conversation);
+  const firstSystemIndex = ordered.findIndex((m) => m.role === 'system');
 
   if (firstSystemIndex === -1) {
     return prependSystemMessage(conversation, content, metadata, resolvedEnvironment);
   }
 
-  const original = conversation.messages[firstSystemIndex]!;
+  const original = ordered[firstSystemIndex]!;
   const replaced: Message = createMessage({
     id: original.id,
     role: 'system',
@@ -108,11 +112,12 @@ export function replaceSystemMessage(
     tokenUsage: undefined,
   });
 
-  const messages = conversation.messages.map((message, index) =>
-    index === firstSystemIndex ? replaced : message,
-  );
-
-  const next: Conversation = { ...conversation, messages, updatedAt: now };
+  const next: Conversation = {
+    ...conversation,
+    ids: [...conversation.ids],
+    messages: { ...conversation.messages, [replaced.id]: replaced },
+    updatedAt: now,
+  };
   return toReadonly(next);
 }
 
@@ -124,7 +129,8 @@ export function collapseSystemMessages(
   conversation: Conversation,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  const systemMessages = conversation.messages.filter((m) => m.role === 'system');
+  const ordered = getOrderedMessages(conversation);
+  const systemMessages = ordered.filter((m) => m.role === 'system');
 
   if (systemMessages.length <= 1) {
     return conversation;
@@ -176,7 +182,7 @@ export function collapseSystemMessages(
     return nextIds;
   }, new Set<string>());
 
-  const messages = conversation.messages
+  const messages = ordered
     .filter((m) => !systemIdsToRemove.has(m.id))
     .map((m) => (m.id === firstSystemMsg.id ? collapsed : m));
 
@@ -198,7 +204,8 @@ export function collapseSystemMessages(
 
   const next: Conversation = {
     ...conversation,
-    messages: renumbered,
+    ids: renumbered.map((message) => message.id),
+    messages: toIdRecord(renumbered),
     updatedAt: now,
   };
   return toReadonly(next);

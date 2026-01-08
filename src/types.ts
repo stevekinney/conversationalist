@@ -1,11 +1,20 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
 /**
- * Current schema version for ConversationJSON.
+ * Current schema version for serialized conversation data.
  * Increment when making breaking changes to the schema.
  */
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 3;
 
+/**
+ * JSON-serializable value types.
+ */
+export type JSONPrimitive = string | number | boolean | null;
+export type JSONValue = JSONPrimitive | JSONValue[] | { [key: string]: JSONValue };
+
+/**
+ * Supported message roles in a conversation.
+ */
 export type MessageRole =
   | 'user'
   | 'assistant'
@@ -15,28 +24,44 @@ export type MessageRole =
   | 'tool-result'
   | 'snapshot';
 
+/**
+ * Tool call metadata for tool-use messages.
+ */
 export interface ToolCall {
   id: string;
   name: string;
-  arguments: unknown;
+  arguments: JSONValue;
 }
 
+/**
+ * Tool execution result metadata for tool-result messages.
+ */
 export interface ToolResult {
   callId: string;
   outcome: 'success' | 'error';
-  content: unknown;
+  content: JSONValue;
+  toolCallId?: string | undefined;
+  toolName?: string | undefined;
+  result?: JSONValue | undefined;
+  error?: string | undefined;
 }
 
+/**
+ * Token usage accounting for a message.
+ */
 export interface TokenUsage {
   prompt: number;
   completion: number;
   total: number;
 }
 
+/**
+ * Mutable input shape for creating a message.
+ */
 export interface MessageInput {
   role: MessageRole;
   content: string | MultiModalContent[];
-  metadata?: Record<string, unknown> | undefined;
+  metadata?: Record<string, JSONValue> | undefined;
   hidden?: boolean | undefined;
   toolCall?: ToolCall | undefined;
   toolResult?: ToolResult | undefined;
@@ -45,57 +70,48 @@ export interface MessageInput {
   goalCompleted?: boolean | undefined;
 }
 
-export interface MessageJSON {
-  id: string;
-  role: MessageRole;
-  content: string | MultiModalContent[];
-  position: number;
-  createdAt: string;
-  metadata: Record<string, unknown>;
-  hidden: boolean;
-  toolCall?: ToolCall | undefined;
-  toolResult?: ToolResult | undefined;
-  tokenUsage?: TokenUsage | undefined;
-  /** Indicates if this message represents goal completion (assistant only) */
-  goalCompleted?: boolean | undefined;
-}
-
+/**
+ * Immutable message shape exposed by the library.
+ */
 export interface Message {
   id: string;
   role: MessageRole;
   content: string | ReadonlyArray<MultiModalContent>;
   position: number;
   createdAt: string;
-  metadata: Readonly<Record<string, unknown>>;
+  metadata: Readonly<Record<string, JSONValue>>;
   hidden: boolean;
   toolCall?: Readonly<ToolCall> | undefined;
   toolResult?: Readonly<ToolResult> | undefined;
   tokenUsage?: Readonly<TokenUsage> | undefined;
-  /** Indicates if this message represents goal completion (assistant only) */
+}
+
+/**
+ * Assistant-only message shape with optional goal completion metadata.
+ */
+export interface AssistantMessage extends Message {
+  role: 'assistant';
+  /** Indicates if this message represents goal completion */
   goalCompleted?: boolean | undefined;
 }
 
+/**
+ * Status values for a conversation lifecycle.
+ */
 export type ConversationStatus = 'active' | 'archived' | 'deleted';
 
-export interface ConversationJSON {
+/**
+ * Immutable conversation state.
+ */
+export interface Conversation {
   schemaVersion: number;
   id: string;
   title?: string | undefined;
   status: ConversationStatus;
-  metadata: Record<string, unknown>;
-  tags: string[];
-  messages: MessageJSON[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Conversation {
-  id: string;
-  title?: string | undefined;
-  status: ConversationStatus;
-  metadata: Readonly<Record<string, unknown>>;
+  metadata: Readonly<Record<string, JSONValue>>;
   tags: ReadonlyArray<string>;
-  messages: ReadonlyArray<Message>;
+  ids: ReadonlyArray<string>;
+  messages: Readonly<Record<string, Message>>;
   createdAt: string;
   updatedAt: string;
 }
@@ -113,16 +129,16 @@ export type MessagePlugin = (input: MessageInput) => MessageInput;
 /**
  * Serialized form of a single node in the conversation history tree.
  */
-export interface HistoryNodeJSON {
-  conversation: ConversationJSON;
-  children: HistoryNodeJSON[];
+export interface HistoryNodeSnapshot {
+  conversation: Conversation;
+  children: HistoryNodeSnapshot[];
 }
 
 /**
  * Serialized form of the entire conversation history.
  */
-export interface ConversationHistoryJSON {
-  root: HistoryNodeJSON;
+export interface ConversationHistorySnapshot {
+  root: HistoryNodeSnapshot;
   currentPath: number[];
 }
 
@@ -131,17 +147,29 @@ export interface ConversationHistoryJSON {
  */
 export interface ExportOptions {
   /**
-   * When true, produces deterministic output with sorted keys and messages.
-   * Useful for testing, diffing, and content-addressable storage.
-   * @default false
-   */
-  deterministic?: boolean;
-
-  /**
    * When true, strips transient metadata (keys starting with '_').
    * @default false
    */
   stripTransient?: boolean;
+
+  /**
+   * When false, hidden messages are omitted from export output.
+   * @default true
+   */
+  includeHidden?: boolean;
+
+  /**
+   * When true, hidden message content is replaced with a redacted placeholder.
+   * Only applies when includeHidden is true.
+   * @default false
+   */
+  redactHiddenContent?: boolean;
+
+  /**
+   * Placeholder used when redacting tool or hidden content.
+   * @default "[REDACTED]"
+   */
+  redactedPlaceholder?: string;
 
   /**
    * When true, redacts tool call arguments with '[REDACTED]'.
@@ -169,7 +197,7 @@ export interface ToMarkdownOptions extends ExportOptions {
 }
 
 /**
- * Options for serializing conversations to JSON.
+ * Options for cloning/exporting conversations with redaction or metadata stripping.
  * Alias for ExportOptions for API consistency.
  */
 export type SerializeOptions = ExportOptions;

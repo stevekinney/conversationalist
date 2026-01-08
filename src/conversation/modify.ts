@@ -17,11 +17,15 @@ export function redactMessageAtPosition(
   placeholder: string = '[REDACTED]',
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  if (position < 0 || position >= conversation.messages.length) {
-    throw createInvalidPositionError(conversation.messages.length - 1, position);
+  if (position < 0 || position >= conversation.ids.length) {
+    throw createInvalidPositionError(conversation.ids.length - 1, position);
   }
 
-  const original = conversation.messages[position]!;
+  const id = conversation.ids[position];
+  const original = id ? conversation.messages[id] : undefined;
+  if (!original) {
+    throw createInvalidPositionError(conversation.ids.length - 1, position);
+  }
   const redacted: Message = createMessage({
     id: original.id,
     role: original.role,
@@ -37,10 +41,11 @@ export function redactMessageAtPosition(
 
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
-  const messages = conversation.messages.map((message, index) =>
-    index === position ? redacted : message,
-  );
-
-  const next: Conversation = { ...conversation, messages, updatedAt: now };
+  const next: Conversation = {
+    ...conversation,
+    ids: [...conversation.ids],
+    messages: { ...conversation.messages, [redacted.id]: redacted },
+    updatedAt: now,
+  };
   return toReadonly(next);
 }

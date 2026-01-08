@@ -2,8 +2,8 @@
  * This file re-exports all utilities from the utilities/ directory.
  * For new code, prefer importing directly from the specific modules:
  * - './utilities/content' for content normalization
- * - './utilities/deterministic' for deterministic output
- * - './utilities/markdown' for markdown conversion
+ * - './utilities/deterministic' for sort utilities (also exported via conversationalist/sort)
+ * - './utilities/markdown' for markdown conversion (exposed via conversationalist/markdown)
  * - './utilities/message' for message utilities
  * - './utilities/tool-calls' for tool call pairing
  * - './utilities/transient' for transient metadata handling
@@ -16,23 +16,12 @@ export type { ToMarkdownOptions } from './types';
 // Content normalization
 export { normalizeContent, toMultiModalArray } from './utilities/content';
 
-// Deterministic output
-export { sortMessagesByPosition, sortObjectKeys } from './utilities/deterministic';
-
-// Markdown conversion
-export {
-  fromMarkdown,
-  getRoleFromLabel,
-  getRoleLabel,
-  LABEL_TO_ROLE,
-  MarkdownParseError,
-  ROLE_LABELS,
-  toMarkdown,
-} from './utilities/markdown';
+// Markdown conversion is exported via `conversationalist/markdown`
 
 // Message utilities
 export {
   createMessage,
+  isAssistantMessage,
   messageHasImages,
   messageParts,
   messageText,

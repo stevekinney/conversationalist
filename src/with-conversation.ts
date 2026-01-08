@@ -17,7 +17,7 @@ import {
   finalizeStreamingMessage,
   updateStreamingMessage,
 } from './streaming';
-import type { Conversation, Message, MessageInput, TokenUsage } from './types';
+import type { Conversation, JSONValue, Message, MessageInput, TokenUsage } from './types';
 
 /**
  * A mutable draft wrapper around a conversation.
@@ -50,7 +50,7 @@ export interface ConversationDraft {
    */
   appendUserMessage: (
     content: MessageInput['content'],
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, JSONValue>,
   ) => ConversationDraft;
 
   /**
@@ -60,7 +60,7 @@ export interface ConversationDraft {
    */
   appendAssistantMessage: (
     content: MessageInput['content'],
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, JSONValue>,
   ) => ConversationDraft;
 
   /**
@@ -70,7 +70,7 @@ export interface ConversationDraft {
    */
   appendSystemMessage: (
     content: string,
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, JSONValue>,
   ) => ConversationDraft;
 
   /**
@@ -80,7 +80,7 @@ export interface ConversationDraft {
    */
   prependSystemMessage: (
     content: string,
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, JSONValue>,
   ) => ConversationDraft;
 
   /**
@@ -90,7 +90,7 @@ export interface ConversationDraft {
    */
   replaceSystemMessage: (
     content: string,
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, JSONValue>,
   ) => ConversationDraft;
 
   /**
@@ -113,7 +113,7 @@ export interface ConversationDraft {
    */
   appendStreamingMessage: (
     role: 'assistant' | 'user',
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, JSONValue>,
   ) => { draft: ConversationDraft; messageId: string };
 
   /**
@@ -133,7 +133,7 @@ export interface ConversationDraft {
    */
   finalizeStreamingMessage: (
     messageId: string,
-    options?: { tokenUsage?: TokenUsage; metadata?: Record<string, unknown> },
+    options?: { tokenUsage?: TokenUsage; metadata?: Record<string, JSONValue> },
   ) => ConversationDraft;
 
   /**

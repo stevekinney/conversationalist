@@ -10,11 +10,13 @@ import type { Conversation } from '../src/types';
 
 describe('Adapter Type Compatibility', () => {
   const conv: Conversation = {
+    schemaVersion: 1,
     id: 'test',
     status: 'active',
     metadata: {},
     tags: [],
-    messages: [],
+    ids: [],
+    messages: {},
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
   };

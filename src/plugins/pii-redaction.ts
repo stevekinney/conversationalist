@@ -1,5 +1,8 @@
 import type { MessageInput, MessagePlugin } from '../types';
 
+/**
+ * Default regex rules for redacting common PII.
+ */
 export const DEFAULT_PII_RULES = {
   email: {
     regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
@@ -16,11 +19,17 @@ export const DEFAULT_PII_RULES = {
   },
 } as const;
 
+/**
+ * A single PII redaction rule.
+ */
 export interface PIIRedactionRule {
   regex: RegExp;
   replace: string | ((match: string, ...groups: string[]) => string);
 }
 
+/**
+ * Options for configuring PII redaction.
+ */
 export interface PIIRedactionOptions {
   rules?: Record<string, PIIRedactionRule>;
   excludeRules?: string[];
@@ -82,4 +91,4 @@ export function createPIIRedactionPlugin(
 /**
  * Default PII redaction plugin instance.
  */
-export const piiRedactionPlugin = createPIIRedactionPlugin();
+export const redactPii = createPIIRedactionPlugin();

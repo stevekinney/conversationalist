@@ -5,8 +5,15 @@ import {
   isConversationEnvironmentParameter,
   resolveConversationEnvironment,
 } from '../environment';
-import type { Conversation, Message, MessageInput } from '../types';
+import type {
+  AssistantMessage,
+  Conversation,
+  JSONValue,
+  Message,
+  MessageInput,
+} from '../types';
 import { createMessage, normalizeContent, toReadonly } from '../utilities';
+import { getOrderedMessages, toIdRecord } from '../utilities/message-store';
 import {
   assertToolReference,
   buildToolUseIndex,
@@ -63,8 +70,8 @@ export function appendMessages(
   const { inputs, environment } = partitionAppendArgs(args);
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
-  const startPosition = conversation.messages.length;
-  const initialToolUses = buildToolUseIndex(conversation.messages);
+  const startPosition = conversation.ids.length;
+  const initialToolUses = buildToolUseIndex(getOrderedMessages(conversation));
 
   const { messages } = inputs.reduce<{
     toolUses: ToolUseIndex;
@@ -79,7 +86,7 @@ export function appendMessages(
         | string
         | MultiModalContent[];
 
-      const message = createMessage({
+      const baseMessage = {
         id: resolvedEnvironment.randomId(),
         role: input.role,
         content: normalizedContent,
@@ -90,8 +97,19 @@ export function appendMessages(
         toolCall: input.toolCall,
         toolResult: input.toolResult,
         tokenUsage: input.tokenUsage,
-        goalCompleted: input.goalCompleted,
-      });
+      };
+
+      let message: Message;
+      if (input.role === 'assistant') {
+        const assistantMessage: AssistantMessage = {
+          ...baseMessage,
+          role: 'assistant',
+          goalCompleted: input.goalCompleted,
+        };
+        message = createMessage(assistantMessage);
+      } else {
+        message = createMessage(baseMessage);
+      }
 
       const toolUses =
         input.role === 'tool-use' && input.toolCall
@@ -106,9 +124,11 @@ export function appendMessages(
     { toolUses: initialToolUses, messages: [] },
   );
 
+  const messageIds = messages.map((message) => message.id);
   const next: Conversation = {
     ...conversation,
-    messages: [...conversation.messages, ...messages],
+    ids: [...conversation.ids, ...messageIds],
+    messages: { ...conversation.messages, ...toIdRecord(messages) },
     updatedAt: now,
   };
   return toReadonly(next);
@@ -120,7 +140,7 @@ export function appendMessages(
 export function appendUserMessage(
   conversation: Conversation,
   content: MessageInput['content'],
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   return appendMessages(conversation, { role: 'user', content, metadata }, environment);
@@ -132,7 +152,7 @@ export function appendUserMessage(
 export function appendAssistantMessage(
   conversation: Conversation,
   content: MessageInput['content'],
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   return appendMessages(
@@ -148,7 +168,7 @@ export function appendAssistantMessage(
 export function appendSystemMessage(
   conversation: Conversation,
   content: string,
-  metadata?: Record<string, unknown>,
+  metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   return appendMessages(conversation, { role: 'system', content, metadata }, environment);

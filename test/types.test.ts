@@ -3,12 +3,12 @@ import { describe, expectTypeOf, it } from 'bun:test';
 import { ConversationHistory } from '../src/history';
 import type { MultiModalContent } from '../src/multi-modal';
 import type {
+  AssistantMessage,
   Conversation,
-  ConversationJSON,
   ConversationStatus,
+  JSONValue,
   Message,
   MessageInput,
-  MessageJSON,
   MessageRole,
   TokenUsage,
   ToolCall,
@@ -40,7 +40,7 @@ describe('conversationalist types Type Inference', () => {
     it('has required properties', () => {
       expectTypeOf<ToolCall['id']>().toEqualTypeOf<string>();
       expectTypeOf<ToolCall['name']>().toEqualTypeOf<string>();
-      expectTypeOf<ToolCall['arguments']>().toEqualTypeOf<unknown>();
+      expectTypeOf<ToolCall['arguments']>().toEqualTypeOf<JSONValue>();
     });
   });
 
@@ -48,7 +48,7 @@ describe('conversationalist types Type Inference', () => {
     it('has required properties', () => {
       expectTypeOf<ToolResult['callId']>().toEqualTypeOf<string>();
       expectTypeOf<ToolResult['outcome']>().toEqualTypeOf<'success' | 'error'>();
-      expectTypeOf<ToolResult['content']>().toEqualTypeOf<unknown>();
+      expectTypeOf<ToolResult['content']>().toEqualTypeOf<JSONValue>();
     });
 
     it('outcome is a discriminated union', () => {
@@ -86,27 +86,13 @@ describe('conversationalist types Type Inference', () => {
 
     it('has optional properties', () => {
       expectTypeOf<MessageInput['metadata']>().toEqualTypeOf<
-        Record<string, unknown> | undefined
+        Record<string, JSONValue> | undefined
       >();
       expectTypeOf<MessageInput['hidden']>().toEqualTypeOf<boolean | undefined>();
       expectTypeOf<MessageInput['toolCall']>().toEqualTypeOf<ToolCall | undefined>();
       expectTypeOf<MessageInput['toolResult']>().toEqualTypeOf<ToolResult | undefined>();
       expectTypeOf<MessageInput['tokenUsage']>().toEqualTypeOf<TokenUsage | undefined>();
       expectTypeOf<MessageInput['goalCompleted']>().toEqualTypeOf<boolean | undefined>();
-    });
-  });
-
-  describe('MessageJSON', () => {
-    it('has required properties for serialization', () => {
-      expectTypeOf<MessageJSON['id']>().toEqualTypeOf<string>();
-      expectTypeOf<MessageJSON['role']>().toEqualTypeOf<MessageRole>();
-      expectTypeOf<MessageJSON['content']>().toEqualTypeOf<
-        string | MultiModalContent[]
-      >();
-      expectTypeOf<MessageJSON['position']>().toEqualTypeOf<number>();
-      expectTypeOf<MessageJSON['createdAt']>().toEqualTypeOf<string>();
-      expectTypeOf<MessageJSON['metadata']>().toEqualTypeOf<Record<string, unknown>>();
-      expectTypeOf<MessageJSON['hidden']>().toEqualTypeOf<boolean>();
     });
   });
 
@@ -128,7 +114,7 @@ describe('conversationalist types Type Inference', () => {
 
     it('has readonly metadata', () => {
       expectTypeOf<Message['metadata']>().toEqualTypeOf<
-        Readonly<Record<string, unknown>>
+        Readonly<Record<string, JSONValue>>
       >();
     });
 
@@ -143,6 +129,15 @@ describe('conversationalist types Type Inference', () => {
     });
   });
 
+  describe('AssistantMessage', () => {
+    it('sets the role to assistant and exposes goalCompleted', () => {
+      expectTypeOf<AssistantMessage['role']>().toEqualTypeOf<'assistant'>();
+      expectTypeOf<AssistantMessage['goalCompleted']>().toEqualTypeOf<
+        boolean | undefined
+      >();
+    });
+  });
+
   describe('ConversationStatus', () => {
     it('is a union of literal string types', () => {
       expectTypeOf<ConversationStatus>().toEqualTypeOf<
@@ -151,26 +146,9 @@ describe('conversationalist types Type Inference', () => {
     });
   });
 
-  describe('ConversationJSON', () => {
-    it('has required properties for serialization', () => {
-      expectTypeOf<ConversationJSON['id']>().toEqualTypeOf<string>();
-      expectTypeOf<ConversationJSON['status']>().toEqualTypeOf<ConversationStatus>();
-      expectTypeOf<ConversationJSON['metadata']>().toEqualTypeOf<
-        Record<string, unknown>
-      >();
-      expectTypeOf<ConversationJSON['tags']>().toEqualTypeOf<string[]>();
-      expectTypeOf<ConversationJSON['messages']>().toEqualTypeOf<MessageJSON[]>();
-      expectTypeOf<ConversationJSON['createdAt']>().toEqualTypeOf<string>();
-      expectTypeOf<ConversationJSON['updatedAt']>().toEqualTypeOf<string>();
-    });
-
-    it('has optional title', () => {
-      expectTypeOf<ConversationJSON['title']>().toEqualTypeOf<string | undefined>();
-    });
-  });
-
   describe('Conversation', () => {
     it('has required properties', () => {
+      expectTypeOf<Conversation['schemaVersion']>().toEqualTypeOf<number>();
       expectTypeOf<Conversation['id']>().toEqualTypeOf<string>();
       expectTypeOf<Conversation['status']>().toEqualTypeOf<ConversationStatus>();
       expectTypeOf<Conversation['createdAt']>().toEqualTypeOf<string>();
@@ -180,14 +158,19 @@ describe('conversationalist types Type Inference', () => {
     it('has readonly nested types', () => {
       // Metadata is readonly
       expectTypeOf<Conversation['metadata']>().toEqualTypeOf<
-        Readonly<Record<string, unknown>>
+        Readonly<Record<string, JSONValue>>
       >();
 
       // Tags are readonly
       expectTypeOf<Conversation['tags']>().toEqualTypeOf<ReadonlyArray<string>>();
 
+      // Ids are readonly
+      expectTypeOf<Conversation['ids']>().toEqualTypeOf<ReadonlyArray<string>>();
+
       // Messages are readonly
-      expectTypeOf<Conversation['messages']>().toEqualTypeOf<ReadonlyArray<Message>>();
+      expectTypeOf<Conversation['messages']>().toEqualTypeOf<
+        Readonly<Record<string, Message>>
+      >();
     });
 
     it('has optional title', () => {
@@ -197,11 +180,13 @@ describe('conversationalist types Type Inference', () => {
     it('is immutable (all nested arrays are readonly)', () => {
       // This verifies that the Conversation type enforces immutability
       const conv: Conversation = {
+        schemaVersion: 1,
         id: 'conv-1',
         status: 'active',
         metadata: {},
         tags: ['test'],
-        messages: [],
+        ids: [],
+        messages: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -210,46 +195,13 @@ describe('conversationalist types Type Inference', () => {
       conv.tags.push('another');
 
       // @ts-expect-error - messages is readonly
-      conv.messages.push({} as Message);
+      conv.messages['msg-1'] = {} as Message;
 
       // @ts-expect-error - cannot reassign readonly property
       conv.metadata['key'] = 'value';
 
       // Just to verify the test compiles (the errors above are expected)
       expectTypeOf(conv).toMatchTypeOf<Conversation>();
-    });
-  });
-
-  describe('Message vs MessageJSON differences', () => {
-    it('MessageJSON uses mutable arrays while Message uses readonly', () => {
-      // MessageJSON content is mutable
-      expectTypeOf<MessageJSON['content']>().toEqualTypeOf<
-        string | MultiModalContent[]
-      >();
-
-      // Message content is readonly
-      expectTypeOf<Message['content']>().toEqualTypeOf<
-        string | ReadonlyArray<MultiModalContent>
-      >();
-    });
-
-    it('MessageJSON metadata is mutable while Message metadata is readonly', () => {
-      expectTypeOf<MessageJSON['metadata']>().toEqualTypeOf<Record<string, unknown>>();
-      expectTypeOf<Message['metadata']>().toEqualTypeOf<
-        Readonly<Record<string, unknown>>
-      >();
-    });
-  });
-
-  describe('Conversation vs ConversationJSON differences', () => {
-    it('ConversationJSON uses mutable arrays while Conversation uses readonly', () => {
-      // ConversationJSON arrays are mutable
-      expectTypeOf<ConversationJSON['tags']>().toEqualTypeOf<string[]>();
-      expectTypeOf<ConversationJSON['messages']>().toEqualTypeOf<MessageJSON[]>();
-
-      // Conversation arrays are readonly
-      expectTypeOf<Conversation['tags']>().toEqualTypeOf<ReadonlyArray<string>>();
-      expectTypeOf<Conversation['messages']>().toEqualTypeOf<ReadonlyArray<Message>>();
     });
   });
 });

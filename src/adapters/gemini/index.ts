@@ -1,6 +1,7 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
 import type { Conversation, Message, ToolCall, ToolResult } from '../../types';
+import { getOrderedMessages } from '../../utilities/message-store';
 
 /**
  * Gemini text part.
@@ -24,7 +25,7 @@ export interface GeminiInlineDataPart {
  */
 export interface GeminiFileDataPart {
   fileData: {
-    mimeType?: string;
+    mimeType: string;
     fileUri: string;
   };
 }
@@ -45,7 +46,7 @@ export interface GeminiFunctionCallPart {
 export interface GeminiFunctionResponsePart {
   functionResponse: {
     name: string;
-    response: unknown;
+    response: Record<string, unknown>;
   };
 }
 
@@ -73,6 +74,41 @@ export interface GeminiContent {
 export interface GeminiConversation {
   systemInstruction?: GeminiContent;
   contents: GeminiContent[];
+}
+
+const DEFAULT_FILE_MIME_TYPE = 'application/octet-stream';
+
+const MIME_TYPE_BY_EXTENSION: Record<string, string> = {
+  bmp: 'image/bmp',
+  gif: 'image/gif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  svg: 'image/svg+xml',
+  webp: 'image/webp',
+};
+
+function inferMimeType(url: string): string | undefined {
+  const trimmed = url.split('#')[0]?.split('?')[0] ?? '';
+  const dotIndex = trimmed.lastIndexOf('.');
+  if (dotIndex === -1) {
+    return undefined;
+  }
+  const extension = trimmed.slice(dotIndex + 1).toLowerCase();
+  return MIME_TYPE_BY_EXTENSION[extension];
+}
+
+function resolveMimeType(url: string, explicit?: string): string {
+  return explicit ?? inferMimeType(url) ?? DEFAULT_FILE_MIME_TYPE;
+}
+
+function normalizeGeminiResponse(content: unknown): Record<string, unknown> {
+  if (content !== null && typeof content === 'object') {
+    return content as Record<string, unknown>;
+  }
+  return { result: content };
 }
 
 /**
@@ -104,10 +140,10 @@ function toGeminiParts(content: string | ReadonlyArray<MultiModalContent>): Gemi
         }
       } else {
         // File URI
-        const fileData: GeminiFileDataPart['fileData'] = { fileUri: url };
-        if (part.mimeType !== undefined) {
-          fileData.mimeType = part.mimeType;
-        }
+        const fileData: GeminiFileDataPart['fileData'] = {
+          fileUri: url,
+          mimeType: resolveMimeType(url, part.mimeType),
+        };
         parts.push({ fileData });
       }
     }
@@ -150,7 +186,7 @@ function toFunctionResponsePart(
   return {
     functionResponse: {
       name: functionName,
-      response: toolResult.content,
+      response: normalizeGeminiResponse(toolResult.content),
     },
   };
 }
@@ -201,11 +237,12 @@ function extractSystemInstruction(
  * ```
  */
 export function toGeminiMessages(conversation: Conversation): GeminiConversation {
-  const systemInstruction = extractSystemInstruction(conversation.messages);
+  const ordered = getOrderedMessages(conversation);
+  const systemInstruction = extractSystemInstruction(ordered);
 
   // Build a map of tool call IDs to function names for tool results
   const toolCallNames = new Map<string, string>();
-  for (const message of conversation.messages) {
+  for (const message of ordered) {
     if (message.role === 'tool-use' && message.toolCall) {
       toolCallNames.set(message.toolCall.id, message.toolCall.name);
     }
@@ -228,7 +265,7 @@ export function toGeminiMessages(conversation: Conversation): GeminiConversation
     currentRole = null;
   };
 
-  for (const message of conversation.messages) {
+  for (const message of ordered) {
     if (message.hidden) continue;
 
     // Skip system messages (already extracted)
