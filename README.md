@@ -906,24 +906,41 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 
 ## API Overview
 
-| Category         | Key Functions                                                                                                                                                                                                                   |
-| :--------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Creation**     | `createConversation`, `deserializeConversation`                                                                                                                                                                                 |
-| **Appending**    | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendMessages`                                                                                                                                          |
-| **Streaming**    | `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage`                                                                                                                        |
-| **Modification** | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                                                                                                                                                     |
-| **Context**      | `truncateToTokenLimit`, `getRecentMessages`, `estimateConversationTokens`                                                                                                                                                       |
-| **Querying**     | `getMessages`, `getMessageIds`, `getMessageById`, `getStatistics`                                                                                                                                                               |
-| **Conversion**   | `toChatMessages`, `pairToolCallsWithResults`                                                                                                                                                                                    |
-| **Markdown**     | `toMarkdown`, `fromMarkdown`, `conversationHistoryToMarkdown`, `conversationHistoryFromMarkdown` (from `conversationalist/markdown`)                                                                                            |
-| **Export**       | `exportMarkdown`, `normalizeLineEndings` (from `conversationalist/export`)                                                                                                                                                      |
-| **Schemas**      | `conversationSchema`, `messageJSONSchema`, `messageInputSchema`, `messageRoleSchema`, `multiModalContentSchema`, `jsonValueSchema`, `toolCallSchema`, `toolResultSchema`, `tokenUsageSchema` (from `conversationalist/schemas`) |
-| **Role Labels**  | `ROLE_LABELS`, `LABEL_TO_ROLE`, `getRoleLabel`, `getRoleFromLabel` (from `conversationalist/markdown`)                                                                                                                          |
-| **Transient**    | `isTransientKey`, `stripTransientFromRecord`, `stripTransientMetadata`                                                                                                                                                          |
-| **Redaction**    | `redactPii`, `createPIIRedactionPlugin`, `createPIIRedaction`, `DEFAULT_PII_RULES` (from `conversationalist/redaction`)                                                                                                         |
-| **Versioning**   | `migrateConversation`, `CURRENT_SCHEMA_VERSION` (from `conversationalist/versioning`)                                                                                                                                           |
-| **Sort**         | `sortObjectKeys`, `sortMessagesByPosition` (from `conversationalist/sort`)                                                                                                                                                      |
-| **History**      | `ConversationHistory`                                                                                                                                                                                                           |
+| Category         | Key Functions                                                                                                                                                                                                               |
+| :--------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Creation**     | `createConversation`, `deserializeConversation`                                                                                                                                                                             |
+| **Appending**    | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendMessages`                                                                                                                                      |
+| **Streaming**    | `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage`                                                                                                                    |
+| **Modification** | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                                                                                                                                                 |
+| **Context**      | `truncateToTokenLimit`, `getRecentMessages`, `estimateConversationTokens`                                                                                                                                                   |
+| **Querying**     | `getMessages`, `getMessageIds`, `getMessageById`, `getStatistics`                                                                                                                                                           |
+| **Conversion**   | `toChatMessages`, `pairToolCallsWithResults`                                                                                                                                                                                |
+| **Markdown**     | `toMarkdown`, `fromMarkdown`, `conversationHistoryToMarkdown`, `conversationHistoryFromMarkdown` (from `conversationalist/markdown`)                                                                                        |
+| **Export**       | `exportMarkdown`, `normalizeLineEndings` (from `conversationalist/export`)                                                                                                                                                  |
+| **Schemas**      | `conversationSchema`, `messageSchema`, `messageInputSchema`, `messageRoleSchema`, `multiModalContentSchema`, `jsonValueSchema`, `toolCallSchema`, `toolResultSchema`, `tokenUsageSchema` (from `conversationalist/schemas`) |
+| **Type Guards**  | `isConversation`, `isMessage`, `isMessageInput`, `isToolCall`, `isToolResult`, `isMessageRole`, `isConversationStatus`, `isJSONValue`, `isTokenUsage`, `isMultiModalContent`                                                |
+| **Role Labels**  | `ROLE_LABELS`, `LABEL_TO_ROLE`, `getRoleLabel`, `getRoleFromLabel` (from `conversationalist/markdown`)                                                                                                                      |
+| **Transient**    | `isTransientKey`, `stripTransientFromRecord`, `stripTransientMetadata`                                                                                                                                                      |
+| **Redaction**    | `redactPii`, `createPIIRedactionPlugin`, `createPIIRedaction`, `DEFAULT_PII_RULES` (from `conversationalist/redaction`)                                                                                                     |
+| **Versioning**   | `migrateConversation`, `CURRENT_SCHEMA_VERSION` (from `conversationalist/versioning`)                                                                                                                                       |
+| **Sort**         | `sortObjectKeys`, `sortMessagesByPosition` (from `conversationalist/sort`)                                                                                                                                                  |
+| **History**      | `ConversationHistory`                                                                                                                                                                                                       |
+
+## Type Guards
+
+Use the built-in type guards to validate unknown values before operating on them:
+
+```ts
+import { isConversation, isMessage } from 'conversationalist';
+
+if (isConversation(data)) {
+  console.log(data.id);
+}
+
+if (isMessage(value)) {
+  console.log(value.role);
+}
+```
 
 ## Standard Schema Compliance
 
@@ -935,7 +952,7 @@ All exported Zod schemas implement the [Standard Schema](https://standardschema.
 | :------------------------ | :---------------------------------- |
 | `conversationSchema`      | Complete conversation with metadata |
 | `jsonValueSchema`         | JSON-serializable values            |
-| `messageJSONSchema`       | Serialized message format           |
+| `messageSchema`           | Serialized message format           |
 | `messageInputSchema`      | Input for creating messages         |
 | `messageRoleSchema`       | Valid message roles enum            |
 | `multiModalContentSchema` | Text or image content               |

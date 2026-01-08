@@ -45,6 +45,9 @@
       },
     },
   },
+  "overrides": {
+    "event-emission": "0.2.1",
+  },
   "packages": {
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.71.2", "", { "dependencies": { "json-schema-to-ts": "^3.1.1" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-TGNDEUuEstk/DKu0/TflXAEt+p+p/WhTlFzEnoosvbaDU2LTjm42igSdlL0VijrKpWejtOKxX0b8A7uc+XiSAQ=="],
 
@@ -358,7 +361,7 @@
 
     "esutils": ["esutils@2.0.3", "", {}, "sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g=="],
 
-    "event-emission": ["event-emission@0.2.0", "", {}, "sha512-Ferz4OM+vBTTqeJ1/McLO1EzOEoGahAI7N+KQaD5c95wnDfodt0AflTpIqo3hv4XKModKy8U9+St3kQqMWVPvA=="],
+    "event-emission": ["event-emission@0.2.1", "", {}, "sha512-bQMhkEhmC2QtF618B6jt6BNvAfjwqkLZMdPVlOSdM6B3mmmJMzMSW5DNU6NLFIpAg0OjoFtlHyEKL8ylsIDa5Q=="],
 
     "eventemitter3": ["eventemitter3@5.0.1", "", {}, "sha512-GWkBvjiSZK87ELrYOSESUYeVIc9mvLLf/nXalMOS5dYrgZq9o5OVkbZAVM06CVxYsCwH9BDZFPlQTlPA1j4ahA=="],
 

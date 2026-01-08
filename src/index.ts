@@ -28,8 +28,8 @@ export {
   conversationShape,
   jsonValueSchema,
   messageInputSchema,
-  messageJSONSchema,
   messageRoleSchema,
+  messageSchema,
   multiModalContentSchema,
   tokenUsageSchema,
   toolCallSchema,
@@ -89,6 +89,20 @@ export {
   stripTransientMetadata,
   toMultiModalArray,
 } from './utilities';
+
+// Type guards
+export {
+  isConversation,
+  isConversationStatus,
+  isJSONValue,
+  isMessage,
+  isMessageInput,
+  isMessageRole,
+  isMultiModalContent,
+  isTokenUsage,
+  isToolCall,
+  isToolResult,
+} from './guards';
 
 // Builder utility
 export type { ConversationDraft } from './with-conversation';

@@ -119,9 +119,9 @@ export const messageInputSchema = z.object({
 }) satisfies z.ZodType<MessageInput>;
 
 /**
- * Zod schema for serialized messages.
+ * Zod schema for messages.
  */
-export const messageJSONSchema = z
+export const messageSchema = z
   .object({
     id: z.string(),
     role: messageRoleSchema,
@@ -156,7 +156,7 @@ export const conversationShape = {
   status: conversationStatusSchema,
   metadata: z.record(z.string(), jsonValueSchema),
   ids: z.array(z.string()),
-  messages: z.record(z.string(), messageJSONSchema),
+  messages: z.record(z.string(), messageSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
 } as const;

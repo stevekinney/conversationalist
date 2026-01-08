@@ -6,8 +6,8 @@ import {
   conversationShape,
   jsonValueSchema,
   messageInputSchema,
-  messageJSONSchema,
   messageRoleSchema,
+  messageSchema,
   multiModalContentSchema,
   tokenUsageSchema,
   toolCallSchema,
@@ -29,7 +29,7 @@ describe('schemas', () => {
     expect(ok.success).toBeTrue();
   });
 
-  test('messageJSONSchema basic shape', () => {
+  test('messageSchema basic shape', () => {
     const m = {
       id: 'id',
       role: 'user',
@@ -39,7 +39,7 @@ describe('schemas', () => {
       metadata: {},
       hidden: false,
     } as const;
-    const res = messageJSONSchema.safeParse(m);
+    const res = messageSchema.safeParse(m);
     expect(res.success).toBeTrue();
   });
 
@@ -159,7 +159,7 @@ describe('Standard Schema compliance', () => {
     const schemas = [
       conversationSchema,
       jsonValueSchema,
-      messageJSONSchema,
+      messageSchema,
       messageInputSchema,
       messageRoleSchema,
       multiModalContentSchema,
