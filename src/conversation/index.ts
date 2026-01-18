@@ -2,13 +2,14 @@
 export type { ConversationEnvironment } from '../environment';
 
 // Create
-export { createConversation } from './create';
+export { createConversation, createConversationUnsafe } from './create';
 
 // Append
 export {
   appendAssistantMessage,
   appendMessages,
   appendSystemMessage,
+  appendUnsafeMessage,
   appendUserMessage,
 } from './append';
 
@@ -51,6 +52,8 @@ export type {
   AppendToolResultOptions,
   AppendToolUseOptions,
   ToolInteraction,
+  ToolResultInput,
+  ToolUseInput,
 } from './tool-interactions';
 export {
   appendToolResult,

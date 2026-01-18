@@ -161,41 +161,57 @@ import {
 } from 'conversationalist';
 
 conversation = appendToolUse(conversation, {
-  id: 'call_123',
-  name: 'getWeather',
-  arguments: { city: 'NYC' },
+  toolId: 'getWeather',
+  callId: 'call_123',
+  args: { city: 'NYC' },
 });
 
 conversation = appendToolResult(conversation, {
   callId: 'call_123',
   outcome: 'success',
-  content: { tempF: 72, condition: 'sunny' },
+  result: { tempF: 72, condition: 'sunny' },
 });
 
 const pending = getPendingToolCalls(conversation);
 const interactions = getToolInteractions(conversation);
 ```
 
-### Correctness Guarantees / Invariants
+### Correctness Guarantees
 
-Conversationalist maintains several invariants when you use its APIs:
+Conversationalist treats integrity and JSON-safety as first-class invariants:
 
 - `conversation.ids` and `conversation.messages` stay in sync.
 - Every `tool-result` references an earlier `tool-use`.
 - `toolCall.id` values are unique per conversation.
+- Conversation payloads are JSON-serializable (`JSONValue` everywhere).
 
-Use the integrity helpers when importing or mutating external data:
+`validateConversationIntegrity`/`assertConversationIntegrity` are the canonical integrity
+checks and are used internally at public boundaries (adapters, markdown import,
+deserialization, truncation, redaction).
+
+Safe APIs (default) validate schema + integrity and throw on failure. Unsafe escape hatches
+skip validation and require manual checks:
+
+- `createConversationUnsafe`
+- `appendUnsafeMessage`
+
+Schema validation is strict; unknown fields are rejected. Use `metadata` for extensions.
+
+For custom transforms, validate the shape and then re-assert integrity:
 
 ```ts
 import {
   assertConversationIntegrity,
   validateConversationIntegrity,
+  conversationSchema,
 } from 'conversationalist';
 
 const issues = validateConversationIntegrity(conversation);
 // issues: IntegrityIssue[]
 
 assertConversationIntegrity(conversation);
+
+conversationSchema.parse(conversation);
 ```
 
 ### Streaming
@@ -963,6 +979,7 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 | :--------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Creation**     | `createConversation`, `deserializeConversation`                                                                                                                                                                             |
 | **Appending**    | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendToolUse`, `appendToolResult`, `appendMessages`                                                                                                 |
+| **Unsafe**       | `createConversationUnsafe`, `appendUnsafeMessage`                                                                                                                                                                           |
 | **Streaming**    | `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage`                                                                                                                    |
 | **Modification** | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                                                                                                                                                 |
 | **Context**      | `truncateToTokenLimit`, `truncateFromPosition`, `getRecentMessages`, `estimateConversationTokens`                                                                                                                           |

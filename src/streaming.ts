@@ -1,7 +1,9 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
+import { ensureConversationSafe } from './conversation/validation';
 import {
   type ConversationEnvironment,
+  isConversationEnvironmentParameter,
   resolveConversationEnvironment,
 } from './environment';
 import type {
@@ -78,7 +80,12 @@ export function appendStreamingMessage(
   metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): { conversation: Conversation; messageId: string } {
-  const resolvedEnvironment = resolveConversationEnvironment(environment);
+  const resolvedEnvironment = resolveConversationEnvironment(
+    isConversationEnvironmentParameter(metadata) ? metadata : environment,
+  );
+  const resolvedMetadata = isConversationEnvironmentParameter(metadata)
+    ? undefined
+    : metadata;
   const now = resolvedEnvironment.now();
   const messageId = resolvedEnvironment.randomId();
 
@@ -88,7 +95,7 @@ export function appendStreamingMessage(
     content: '',
     position: conversation.ids.length,
     createdAt: now,
-    metadata: { ...(metadata ?? {}), [STREAMING_KEY]: true },
+    metadata: { ...(resolvedMetadata ?? {}), [STREAMING_KEY]: true },
     hidden: false,
     toolCall: undefined,
     toolResult: undefined,
@@ -102,7 +109,7 @@ export function appendStreamingMessage(
     updatedAt: now,
   });
 
-  return { conversation: updatedConversation, messageId };
+  return { conversation: ensureConversationSafe(updatedConversation), messageId };
 }
 
 /**
@@ -120,7 +127,7 @@ export function updateStreamingMessage(
 
   const original = conversation.messages[messageId];
   if (!original) {
-    return conversation;
+    return ensureConversationSafe(conversation);
   }
 
   const overrides: {
@@ -135,12 +142,14 @@ export function updateStreamingMessage(
 
   const updated = cloneMessage(original, overrides);
 
-  return toReadonly({
-    ...conversation,
-    ids: [...conversation.ids],
-    messages: { ...conversation.messages, [updated.id]: updated },
-    updatedAt: now,
-  });
+  return ensureConversationSafe(
+    toReadonly({
+      ...conversation,
+      ids: [...conversation.ids],
+      messages: { ...conversation.messages, [updated.id]: updated },
+      updatedAt: now,
+    }),
+  );
 }
 
 /**
@@ -156,12 +165,17 @@ export function finalizeStreamingMessage(
   },
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  const resolvedEnvironment = resolveConversationEnvironment(environment);
+  const resolvedEnvironment = resolveConversationEnvironment(
+    isConversationEnvironmentParameter(options) ? options : environment,
+  );
+  const resolvedOptions = isConversationEnvironmentParameter(options)
+    ? undefined
+    : options;
   const now = resolvedEnvironment.now();
 
   const original = conversation.messages[messageId];
   if (!original) {
-    return conversation;
+    return ensureConversationSafe(conversation);
   }
 
   // Remove the streaming flag and merge in any new metadata
@@ -171,7 +185,7 @@ export function finalizeStreamingMessage(
   >;
   const finalMetadata: Record<string, JSONValue> = {
     ...restMetadata,
-    ...(options?.metadata ?? {}),
+    ...(resolvedOptions?.metadata ?? {}),
   };
 
   const finalizeOverrides: {
@@ -180,18 +194,20 @@ export function finalizeStreamingMessage(
   } = {
     metadata: finalMetadata,
   };
-  if (options?.tokenUsage) {
-    finalizeOverrides.tokenUsage = { ...options.tokenUsage };
+  if (resolvedOptions?.tokenUsage) {
+    finalizeOverrides.tokenUsage = { ...resolvedOptions.tokenUsage };
   }
 
   const updated = cloneMessage(original, finalizeOverrides);
 
-  return toReadonly({
-    ...conversation,
-    ids: [...conversation.ids],
-    messages: { ...conversation.messages, [updated.id]: updated },
-    updatedAt: now,
-  });
+  return ensureConversationSafe(
+    toReadonly({
+      ...conversation,
+      ids: [...conversation.ids],
+      messages: { ...conversation.messages, [updated.id]: updated },
+      updatedAt: now,
+    }),
+  );
 }
 
 /**
@@ -206,7 +222,7 @@ export function cancelStreamingMessage(
   const now = resolvedEnvironment.now();
 
   if (!conversation.messages[messageId]) {
-    return conversation;
+    return ensureConversationSafe(conversation);
   }
 
   const messages = getOrderedMessages(conversation)
@@ -225,10 +241,12 @@ export function cancelStreamingMessage(
           })(),
     );
 
-  return toReadonly({
-    ...conversation,
-    ids: messages.map((message) => message.id),
-    messages: toIdRecord(messages),
-    updatedAt: now,
-  });
+  return ensureConversationSafe(
+    toReadonly({
+      ...conversation,
+      ids: messages.map((message) => message.id),
+      messages: toIdRecord(messages),
+      updatedAt: now,
+    }),
+  );
 }

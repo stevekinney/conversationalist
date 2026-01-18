@@ -1,6 +1,7 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 import matter from 'gray-matter';
 
+import { assertConversationSafe } from '../conversation/validation';
 import { copyContent } from '../multi-modal';
 import type {
   AssistantMessage,
@@ -275,6 +276,7 @@ export function toMarkdown(
   conversation: Conversation,
   options: ToMarkdownOptions = {},
 ): string {
+  assertConversationSafe(conversation);
   const resolved = resolveMarkdownOptions(options);
   const prepared = prepareConversationForMarkdown(conversation, resolved);
 
@@ -418,11 +420,21 @@ export function fromMarkdown(markdown: string): Conversation {
   // Check if frontmatter exists
   const hasFrontmatter = trimmed.startsWith('---');
 
-  if (hasFrontmatter) {
-    return parseMarkdownWithMetadata(trimmed);
+  const conversation = hasFrontmatter
+    ? parseMarkdownWithMetadata(trimmed)
+    : parseMarkdownSimple(trimmed);
+
+  try {
+    assertConversationSafe(conversation);
+  } catch (error) {
+    throw new MarkdownParseError(
+      `Invalid markdown conversation: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
 
-  return parseMarkdownSimple(trimmed);
+  return conversation;
 }
 
 /**

@@ -40,10 +40,6 @@ export interface ToolResult {
   callId: string;
   outcome: 'success' | 'error';
   content: JSONValue;
-  toolCallId?: string | undefined;
-  toolName?: string | undefined;
-  result?: JSONValue | undefined;
-  error?: string | undefined;
 }
 
 /**

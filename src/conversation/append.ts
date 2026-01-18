@@ -5,6 +5,7 @@ import {
   isConversationEnvironmentParameter,
   resolveConversationEnvironment,
 } from '../environment';
+import { createIntegrityError } from '../errors';
 import type {
   AssistantMessage,
   Conversation,
@@ -20,6 +21,7 @@ import {
   registerToolUse,
   type ToolUseIndex,
 } from './tool-tracking';
+import { ensureConversationSafe } from './validation';
 
 /**
  * Separates message inputs from an optional trailing environment argument.
@@ -67,11 +69,33 @@ export function appendMessages(
   conversation: Conversation,
   ...args: (MessageInput | Partial<ConversationEnvironment> | undefined)[]
 ): Conversation {
+  return appendMessagesInternal(conversation, args, true);
+}
+
+/**
+ * Appends a message without validating conversation integrity or JSON-safety.
+ * Use only when you have already validated the conversation yourself.
+ */
+export function appendUnsafeMessage(
+  conversation: Conversation,
+  input: MessageInput,
+  environment?: Partial<ConversationEnvironment>,
+): Conversation {
+  return appendMessagesInternal(conversation, [input, environment], false);
+}
+
+const appendMessagesInternal = (
+  conversation: Conversation,
+  args: Array<MessageInput | Partial<ConversationEnvironment> | undefined>,
+  validate: boolean,
+): Conversation => {
   const { inputs, environment } = partitionAppendArgs(args);
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
   const startPosition = conversation.ids.length;
-  const initialToolUses = buildToolUseIndex(getOrderedMessages(conversation));
+  const initialToolUses = validate
+    ? buildToolUseIndex(getOrderedMessages(conversation))
+    : new Map<string, { name: string }>();
 
   const { messages } = inputs.reduce<{
     toolUses: ToolUseIndex;
@@ -83,7 +107,11 @@ export function appendMessages(
         input,
       );
 
-      if (processedInput.role === 'tool-result' && processedInput.toolResult) {
+      if (
+        validate &&
+        processedInput.role === 'tool-result' &&
+        processedInput.toolResult
+      ) {
         assertToolReference(state.toolUses, processedInput.toolResult.callId);
       }
 
@@ -116,10 +144,19 @@ export function appendMessages(
         message = createMessage(baseMessage);
       }
 
-      const toolUses =
-        processedInput.role === 'tool-use' && processedInput.toolCall
+      let toolUses = state.toolUses;
+      if (processedInput.role === 'tool-use' && processedInput.toolCall) {
+        if (validate && state.toolUses.has(processedInput.toolCall.id)) {
+          throw createIntegrityError('duplicate toolCall.id in conversation', {
+            toolCallId: processedInput.toolCall.id,
+            messageId: baseMessage.id,
+          });
+        }
+
+        toolUses = validate
           ? registerToolUse(state.toolUses, processedInput.toolCall)
           : state.toolUses;
+      }
 
       return {
         toolUses,
@@ -136,8 +173,9 @@ export function appendMessages(
     messages: { ...conversation.messages, ...toIdRecord(messages) },
     updatedAt: now,
   };
-  return toReadonly(next);
-}
+  const readonly = toReadonly(next);
+  return validate ? ensureConversationSafe(readonly) : readonly;
+};
 
 /**
  * Appends a user message to the conversation.
@@ -148,7 +186,17 @@ export function appendUserMessage(
   metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  return appendMessages(conversation, { role: 'user', content, metadata }, environment);
+  const resolvedEnvironment = isConversationEnvironmentParameter(metadata)
+    ? metadata
+    : environment;
+  const resolvedMetadata = isConversationEnvironmentParameter(metadata)
+    ? undefined
+    : metadata;
+  return appendMessages(
+    conversation,
+    { role: 'user', content, metadata: resolvedMetadata },
+    resolvedEnvironment,
+  );
 }
 
 /**
@@ -160,10 +208,16 @@ export function appendAssistantMessage(
   metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
+  const resolvedEnvironment = isConversationEnvironmentParameter(metadata)
+    ? metadata
+    : environment;
+  const resolvedMetadata = isConversationEnvironmentParameter(metadata)
+    ? undefined
+    : metadata;
   return appendMessages(
     conversation,
-    { role: 'assistant', content, metadata },
-    environment,
+    { role: 'assistant', content, metadata: resolvedMetadata },
+    resolvedEnvironment,
   );
 }
 
@@ -176,5 +230,15 @@ export function appendSystemMessage(
   metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  return appendMessages(conversation, { role: 'system', content, metadata }, environment);
+  const resolvedEnvironment = isConversationEnvironmentParameter(metadata)
+    ? metadata
+    : environment;
+  const resolvedMetadata = isConversationEnvironmentParameter(metadata)
+    ? undefined
+    : metadata;
+  return appendMessages(
+    conversation,
+    { role: 'system', content, metadata: resolvedMetadata },
+    resolvedEnvironment,
+  );
 }

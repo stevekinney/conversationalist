@@ -1,3 +1,4 @@
+import { ensureConversationSafe } from '../conversation/validation';
 import type { AssistantMessage, Conversation, JSONValue, Message } from '../types';
 import { isAssistantMessage } from './message';
 import { getOrderedMessages, toIdRecord } from './message-store';
@@ -88,15 +89,17 @@ export function stripTransientMetadata(conversation: Conversation): Conversation
     return toReadonly(baseMessage);
   });
 
-  return toReadonly({
-    schemaVersion: conversation.schemaVersion,
-    id: conversation.id,
-    title: conversation.title,
-    status: conversation.status,
-    metadata: toReadonly(stripTransientFromRecord({ ...conversation.metadata })),
-    ids: strippedMessages.map((message) => message.id),
-    messages: toIdRecord(strippedMessages),
-    createdAt: conversation.createdAt,
-    updatedAt: conversation.updatedAt,
-  });
+  return ensureConversationSafe(
+    toReadonly({
+      schemaVersion: conversation.schemaVersion,
+      id: conversation.id,
+      title: conversation.title,
+      status: conversation.status,
+      metadata: toReadonly(stripTransientFromRecord({ ...conversation.metadata })),
+      ids: strippedMessages.map((message) => message.id),
+      messages: toIdRecord(strippedMessages),
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+    }),
+  );
 }

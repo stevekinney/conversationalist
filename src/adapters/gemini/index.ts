@@ -1,5 +1,6 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
+import { assertConversationSafe } from '../../conversation/validation';
 import type { Conversation, Message, ToolCall, ToolResult } from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
 
@@ -249,6 +250,7 @@ function extractSystemInstruction(
  * ```
  */
 export function toGeminiMessages(conversation: Conversation): GeminiConversation {
+  assertConversationSafe(conversation);
   const ordered = getOrderedMessages(conversation);
   const systemInstruction = extractSystemInstruction(ordered);
 

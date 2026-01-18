@@ -1,5 +1,6 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
+import { assertConversationSafe } from './conversation/validation';
 import {
   type ConversationEnvironment,
   isConversationEnvironmentParameter,
@@ -209,6 +210,7 @@ export function truncateToTokenLimit(
   optionsOrEstimator?: TruncateOptions | TokenEstimator,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
+  assertConversationSafe(conversation);
   // Handle overloaded arguments
   let options: TruncateOptions = {};
   let env = environment;
@@ -368,6 +370,7 @@ export function truncateFromPosition(
   },
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
+  assertConversationSafe(conversation);
   const preserveSystem = options?.preserveSystemMessages ?? true;
   const preserveToolPairs = options?.preserveToolPairs ?? true;
   const resolvedEnvironment = resolveConversationEnvironment(environment);

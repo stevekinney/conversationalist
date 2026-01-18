@@ -5,6 +5,7 @@ import type {
 
 import type { Conversation } from '../types';
 import { getOrderedMessages } from '../utilities/message-store';
+import { assertConversationSafe } from './validation';
 
 /**
  * Converts conversation messages to the external chat message format.
@@ -12,6 +13,7 @@ import { getOrderedMessages } from '../utilities/message-store';
  * Hidden messages are excluded from the output.
  */
 export function toChatMessages(conversation: Conversation): ExternalMessage[] {
+  assertConversationSafe(conversation);
   const roleMap: Record<string, 'user' | 'assistant' | 'system'> = {
     user: 'user',
     assistant: 'assistant',

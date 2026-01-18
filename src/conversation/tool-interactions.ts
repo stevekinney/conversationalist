@@ -1,4 +1,8 @@
-import type { ConversationEnvironment } from '../environment';
+import {
+  type ConversationEnvironment,
+  isConversationEnvironmentParameter,
+  resolveConversationEnvironment,
+} from '../environment';
 import type {
   Conversation,
   JSONValue,
@@ -25,6 +29,18 @@ export interface AppendToolResultOptions {
   tokenUsage?: TokenUsage;
 }
 
+export interface ToolUseInput {
+  toolId: string;
+  callId?: string;
+  args: JSONValue;
+}
+
+export interface ToolResultInput {
+  callId: string;
+  outcome: 'success' | 'error';
+  result: JSONValue;
+}
+
 export interface ToolInteraction {
   call: ToolCall;
   result?: ToolResult | undefined;
@@ -35,21 +51,34 @@ export interface ToolInteraction {
  */
 export function appendToolUse(
   conversation: Conversation,
-  toolCall: ToolCall,
+  toolCall: ToolUseInput,
   options?: AppendToolUseOptions,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
+  const resolved = resolveConversationEnvironment(
+    isConversationEnvironmentParameter(options) ? options : environment,
+  );
+  const resolvedOptions = isConversationEnvironmentParameter(options)
+    ? undefined
+    : options;
+  const callId = toolCall.callId ?? resolved.randomId();
+  const toolCallMeta: ToolCall = {
+    id: callId,
+    name: toolCall.toolId,
+    arguments: toolCall.args,
+  };
+
   return appendMessages(
     conversation,
     {
       role: 'tool-use',
-      content: options?.content ?? '',
-      metadata: options?.metadata,
-      hidden: options?.hidden,
-      toolCall,
-      tokenUsage: options?.tokenUsage,
+      content: resolvedOptions?.content ?? '',
+      metadata: resolvedOptions?.metadata,
+      hidden: resolvedOptions?.hidden,
+      toolCall: toolCallMeta,
+      tokenUsage: resolvedOptions?.tokenUsage,
     },
-    environment,
+    resolved,
   );
 }
 
@@ -58,21 +87,30 @@ export function appendToolUse(
  */
 export function appendToolResult(
   conversation: Conversation,
-  toolResult: ToolResult,
+  toolResult: ToolResultInput,
   options?: AppendToolResultOptions,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
+  const resolvedOptions = isConversationEnvironmentParameter(options)
+    ? undefined
+    : options;
+  const toolResultMeta: ToolResult = {
+    callId: toolResult.callId,
+    outcome: toolResult.outcome,
+    content: toolResult.result,
+  };
+
   return appendMessages(
     conversation,
     {
       role: 'tool-result',
-      content: options?.content ?? '',
-      metadata: options?.metadata,
-      hidden: options?.hidden,
-      toolResult,
-      tokenUsage: options?.tokenUsage,
+      content: resolvedOptions?.content ?? '',
+      metadata: resolvedOptions?.metadata,
+      hidden: resolvedOptions?.hidden,
+      toolResult: toolResultMeta,
+      tokenUsage: resolvedOptions?.tokenUsage,
     },
-    environment,
+    isConversationEnvironmentParameter(options) ? options : environment,
   );
 }
 

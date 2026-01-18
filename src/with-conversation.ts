@@ -12,6 +12,7 @@ import {
   redactMessageAtPosition,
   replaceSystemMessage,
 } from './conversation/index';
+import { ensureConversationSafe } from './conversation/validation';
 import {
   appendStreamingMessage,
   cancelStreamingMessage,
@@ -263,16 +264,16 @@ export function withConversation(
   conversation: Conversation,
   fn: (draft: ConversationDraft) => void | Promise<void>,
 ): Conversation | Promise<Conversation> {
-  const draft = createDraft(conversation);
+  const draft = createDraft(ensureConversationSafe(conversation));
   const maybePromise = fn(draft);
   if (
     maybePromise &&
     typeof (maybePromise as unknown) === 'object' &&
     typeof maybePromise.then === 'function'
   ) {
-    return maybePromise.then(() => draft.value);
+    return maybePromise.then(() => ensureConversationSafe(draft.value));
   }
-  return draft.value;
+  return ensureConversationSafe(draft.value);
 }
 
 /**
@@ -283,5 +284,6 @@ export function pipeConversation(
   conversation: Conversation,
   ...fns: Array<(conversation: Conversation) => Conversation>
 ): Conversation {
-  return fns.reduce((current, fn) => fn(current), conversation);
+  const result = fns.reduce((current, fn) => fn(current), conversation);
+  return ensureConversationSafe(result);
 }

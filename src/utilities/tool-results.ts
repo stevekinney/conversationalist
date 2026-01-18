@@ -14,12 +14,5 @@ export function redactToolResult(
   toolResult: ToolResult,
   placeholder: string,
 ): ToolResult {
-  const result = { ...toolResult, content: placeholder };
-  if (result.result !== undefined) {
-    result.result = placeholder;
-  }
-  if (result.error !== undefined) {
-    result.error = placeholder;
-  }
-  return result;
+  return { ...toolResult, content: placeholder };
 }

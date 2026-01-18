@@ -1,11 +1,13 @@
 import {
   type ConversationEnvironment,
+  isConversationEnvironmentParameter,
   resolveConversationEnvironment,
 } from '../environment';
 import { copyContent } from '../multi-modal';
 import type { Conversation, JSONValue, Message } from '../types';
 import { createMessage, toReadonly } from '../utilities';
 import { getOrderedMessages, toIdRecord } from '../utilities/message-store';
+import { ensureConversationSafe } from './validation';
 
 /**
  * Checks if a conversation contains any system messages.
@@ -39,7 +41,12 @@ export function prependSystemMessage(
   metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  const resolvedEnvironment = resolveConversationEnvironment(environment);
+  const resolvedEnvironment = resolveConversationEnvironment(
+    isConversationEnvironmentParameter(metadata) ? metadata : environment,
+  );
+  const resolvedMetadata = isConversationEnvironmentParameter(metadata)
+    ? undefined
+    : metadata;
   const now = resolvedEnvironment.now();
 
   const newMessage: Message = createMessage({
@@ -48,7 +55,7 @@ export function prependSystemMessage(
     content,
     position: 0,
     createdAt: now,
-    metadata: { ...(metadata ?? {}) },
+    metadata: { ...(resolvedMetadata ?? {}) },
     hidden: false,
     toolCall: undefined,
     toolResult: undefined,
@@ -71,12 +78,14 @@ export function prependSystemMessage(
     }),
   );
 
-  return toReadonly({
-    ...conversation,
-    ids: [newMessage.id, ...ordered.map((message) => message.id)],
-    messages: toIdRecord([newMessage, ...renumberedMessages]),
-    updatedAt: now,
-  });
+  return ensureConversationSafe(
+    toReadonly({
+      ...conversation,
+      ids: [newMessage.id, ...ordered.map((message) => message.id)],
+      messages: toIdRecord([newMessage, ...renumberedMessages]),
+      updatedAt: now,
+    }),
+  );
 }
 
 /**
@@ -89,13 +98,23 @@ export function replaceSystemMessage(
   metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
-  const resolvedEnvironment = resolveConversationEnvironment(environment);
+  const resolvedEnvironment = resolveConversationEnvironment(
+    isConversationEnvironmentParameter(metadata) ? metadata : environment,
+  );
+  const resolvedMetadata = isConversationEnvironmentParameter(metadata)
+    ? undefined
+    : metadata;
   const now = resolvedEnvironment.now();
   const ordered = getOrderedMessages(conversation);
   const firstSystemIndex = ordered.findIndex((m) => m.role === 'system');
 
   if (firstSystemIndex === -1) {
-    return prependSystemMessage(conversation, content, metadata, resolvedEnvironment);
+    return prependSystemMessage(
+      conversation,
+      content,
+      resolvedMetadata,
+      resolvedEnvironment,
+    );
   }
 
   const original = ordered[firstSystemIndex]!;
@@ -105,7 +124,7 @@ export function replaceSystemMessage(
     content,
     position: original.position,
     createdAt: original.createdAt,
-    metadata: { ...(metadata ?? original.metadata) },
+    metadata: { ...(resolvedMetadata ?? original.metadata) },
     hidden: original.hidden,
     toolCall: undefined,
     toolResult: undefined,
@@ -118,7 +137,7 @@ export function replaceSystemMessage(
     messages: { ...conversation.messages, [replaced.id]: replaced },
     updatedAt: now,
   };
-  return toReadonly(next);
+  return ensureConversationSafe(toReadonly(next));
 }
 
 /**
@@ -133,7 +152,7 @@ export function collapseSystemMessages(
   const systemMessages = ordered.filter((m) => m.role === 'system');
 
   if (systemMessages.length <= 1) {
-    return conversation;
+    return ensureConversationSafe(conversation);
   }
 
   const resolvedEnvironment = resolveConversationEnvironment(environment);
@@ -208,5 +227,5 @@ export function collapseSystemMessages(
     messages: toIdRecord(renumbered),
     updatedAt: now,
   };
-  return toReadonly(next);
+  return ensureConversationSafe(toReadonly(next));
 }

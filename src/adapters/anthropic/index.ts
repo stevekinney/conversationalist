@@ -1,5 +1,6 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
+import { assertConversationSafe } from '../../conversation/validation';
 import type { Conversation, Message, ToolCall, ToolResult } from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
 
@@ -210,6 +211,7 @@ function extractSystemContent(messages: ReadonlyArray<Message>): string | undefi
  * ```
  */
 export function toAnthropicMessages(conversation: Conversation): AnthropicConversation {
+  assertConversationSafe(conversation);
   const ordered = getOrderedMessages(conversation);
   const system = extractSystemContent(ordered);
   const messages: AnthropicMessage[] = [];

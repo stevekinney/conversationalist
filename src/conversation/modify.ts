@@ -7,6 +7,7 @@ import { createInvalidPositionError } from '../errors';
 import type { Conversation, Message } from '../types';
 import { createMessage, toReadonly } from '../utilities';
 import { redactToolResult } from '../utilities/tool-results';
+import { ensureConversationSafe } from './validation';
 
 export interface RedactMessageOptions {
   placeholder?: string;
@@ -110,5 +111,5 @@ export function redactMessageAtPosition(
     messages: { ...conversation.messages, [redacted.id]: redacted },
     updatedAt: now,
   };
-  return toReadonly(next);
+  return ensureConversationSafe(toReadonly(next));
 }

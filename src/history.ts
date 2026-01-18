@@ -37,6 +37,7 @@ import {
   searchConversationMessages,
   toChatMessages,
 } from './conversation/index';
+import { ensureConversationSafe } from './conversation/validation';
 import {
   type ConversationEnvironment,
   resolveConversationEnvironment,
@@ -100,8 +101,9 @@ export class ConversationHistory extends EventTarget {
     super();
     this.environment = resolveConversationEnvironment(environment);
     this.events = createEventTarget<ConversationHistoryEventMap>();
+    const safeInitial = ensureConversationSafe(initial);
     this.currentNode = {
-      conversation: initial,
+      conversation: safeInitial,
       parent: null,
       children: [],
     };

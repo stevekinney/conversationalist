@@ -215,7 +215,7 @@ describe('toMarkdown', () => {
           content: [
             { type: 'text', text: 'Valid' },
             { type: 'text', text: '' },
-            { type: 'text' } as any,
+            { type: 'text', text: '' },
           ],
           position: 0,
           createdAt: '2024-01-15T10:00:00.000Z',
@@ -301,9 +301,19 @@ describe('toMarkdown', () => {
       const conversation = createConversation([
         {
           id: 'msg-1',
+          role: 'tool-use',
+          content: '',
+          position: 0,
+          createdAt: '2024-01-15T10:00:00.000Z',
+          metadata: {},
+          hidden: false,
+          toolCall: { id: 'call-1', name: 'search', arguments: {} },
+        },
+        {
+          id: 'msg-2',
           role: 'tool-result',
           content: 'Search results',
-          position: 0,
+          position: 1,
           createdAt: '2024-01-15T10:00:00.000Z',
           metadata: {},
           hidden: false,
@@ -491,10 +501,6 @@ describe('toMarkdown', () => {
             callId: 'call-1',
             outcome: 'error',
             content: 'secret result',
-            toolCallId: 'call-1',
-            toolName: 'search',
-            result: { status: 'secret payload' },
-            error: 'secret error',
           },
         },
       ]);
@@ -509,8 +515,6 @@ describe('toMarkdown', () => {
       expect(result).toContain('[MASKED]');
       expect(result).not.toContain('secret args');
       expect(result).not.toContain('secret result');
-      expect(result).not.toContain('secret payload');
-      expect(result).not.toContain('secret error');
       expect(result).toContain('call-1');
       expect(result).toContain('search');
     });
@@ -861,20 +865,34 @@ messages:
     createdAt: '2024-01-15T10:00:00.000Z'
     metadata: {}
     hidden: false
+    toolCall:
+      id: call-1
+      name: search
+      arguments: {}
+  msg-2:
+    position: 1
+    createdAt: '2024-01-15T10:00:00.000Z'
+    metadata: {}
+    hidden: false
     toolResult:
       callId: call-1
       outcome: success
       content: Found it
 ---
 
-### Tool Result (msg-1)
+### Tool Use (msg-1)
+
+Calling search
+
+### Tool Result (msg-2)
 
 Search results`;
 
       const conversation = fromMarkdown(markdown);
-      expect(getOrderedMessages(conversation)[0].toolResult).toBeDefined();
-      expect(getOrderedMessages(conversation)[0].toolResult?.callId).toBe('call-1');
-      expect(getOrderedMessages(conversation)[0].toolResult?.outcome).toBe('success');
+      const ordered = getOrderedMessages(conversation);
+      expect(ordered[1]?.toolResult).toBeDefined();
+      expect(ordered[1]?.toolResult?.callId).toBe('call-1');
+      expect(ordered[1]?.toolResult?.outcome).toBe('success');
     });
 
     test('parses tokenUsage metadata', () => {
@@ -1125,7 +1143,18 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
   test('round-trip preserves toolResult', () => {
     const original = createConversation([
       createMessage({
+        id: 'msg-1',
+        role: 'tool-use',
+        toolCall: {
+          id: 'call-123',
+          name: 'search_documents',
+          arguments: { query: 'test' },
+        },
+      }),
+      createMessage({
+        id: 'msg-2',
         role: 'tool-result',
+        position: 1,
         toolResult: {
           callId: 'call-123',
           outcome: 'error',
@@ -1136,7 +1165,9 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(getOrderedMessages(parsed)[0].toolResult).toEqual(getOrderedMessages(original)[0].toolResult);
+    expect(getOrderedMessages(parsed)[1].toolResult).toEqual(
+      getOrderedMessages(original)[1].toolResult,
+    );
   });
 
   test('round-trip preserves tokenUsage', () => {

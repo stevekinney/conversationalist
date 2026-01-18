@@ -23,7 +23,7 @@ import {
   toChatMessages,
 } from '../src/conversation/index';
 import { ConversationalistError } from '../src/errors';
-import type { Conversation, Message } from '../src/types';
+import type { Conversation, JSONValue, Message } from '../src/types';
 
 const getOrderedMessages = (conversation: Conversation): Message[] =>
   conversation.ids
@@ -101,6 +101,17 @@ describe('conversation (functional)', () => {
     const message = getOrderedMessages(c)[0]!;
     expect(message.toolCall).toBeUndefined();
     expect(message.toolResult).toBeUndefined();
+  });
+
+  test('rejects non-JSON metadata payloads', () => {
+    const c = createConversation();
+    expect(() =>
+      appendMessages(c, {
+        role: 'user',
+        content: 'hello',
+        metadata: { when: new Date() as unknown as JSONValue },
+      }),
+    ).toThrow(ConversationalistError);
   });
 
   test('getMessages includeHidden and lookup helpers', () => {

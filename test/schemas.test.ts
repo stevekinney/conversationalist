@@ -29,6 +29,11 @@ describe('schemas', () => {
     expect(ok.success).toBeTrue();
   });
 
+  test('jsonValueSchema rejects non-JSON values', () => {
+    expect(jsonValueSchema.safeParse(new Date()).success).toBeFalse();
+    expect(jsonValueSchema.safeParse(Number.POSITIVE_INFINITY).success).toBeFalse();
+  });
+
   test('messageSchema basic shape', () => {
     const m = {
       id: 'id',

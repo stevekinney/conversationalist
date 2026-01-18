@@ -45,6 +45,8 @@ export type {
   IntegrityIssueCode,
   RedactMessageOptions,
   ToolInteraction,
+  ToolResultInput,
+  ToolUseInput,
 } from './conversation/index';
 export {
   appendAssistantMessage,
@@ -52,10 +54,12 @@ export {
   appendSystemMessage,
   appendToolResult,
   appendToolUse,
+  appendUnsafeMessage,
   appendUserMessage,
   assertConversationIntegrity,
   collapseSystemMessages,
   createConversation,
+  createConversationUnsafe,
   deserializeConversation,
   getFirstSystemMessage,
   getMessageAtPosition,

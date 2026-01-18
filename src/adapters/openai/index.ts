@@ -1,5 +1,6 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
+import { assertConversationSafe } from '../../conversation/validation';
 import type { Conversation, Message, ToolCall, ToolResult } from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
 
@@ -239,6 +240,7 @@ function stringifyToolResult(result: ToolResult): string {
  * ```
  */
 export function toOpenAIMessages(conversation: Conversation): OpenAIMessage[] {
+  assertConversationSafe(conversation);
   const messages: OpenAIMessage[] = [];
 
   for (const message of getOrderedMessages(conversation)) {
@@ -256,6 +258,7 @@ export function toOpenAIMessages(conversation: Conversation): OpenAIMessage[] {
  * This is useful when the model made multiple tool calls in sequence.
  */
 export function toOpenAIMessagesGrouped(conversation: Conversation): OpenAIMessage[] {
+  assertConversationSafe(conversation);
   const messages: OpenAIMessage[] = [];
   let pendingToolCalls: OpenAIToolCall[] = [];
 

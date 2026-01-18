@@ -3,20 +3,16 @@ import { conversationSchema } from '../schemas';
 import type { AssistantMessage, Conversation, Message, ToolResult } from '../types';
 import { createMessage, isAssistantMessage, toReadonly } from '../utilities';
 import { toIdRecord } from '../utilities/message-store';
+import { assertConversationIntegrity } from './integrity';
 import { assertToolReference, registerToolUse, type ToolUseIndex } from './tool-tracking';
 
 function normalizeToolResult(toolResult: Message['toolResult']): ToolResult | undefined {
   if (!toolResult) return undefined;
-  const normalized: ToolResult = {
+  return {
     callId: toolResult.callId,
     outcome: toolResult.outcome,
     content: toolResult.content,
   };
-  if (toolResult.toolCallId !== undefined) normalized.toolCallId = toolResult.toolCallId;
-  if (toolResult.toolName !== undefined) normalized.toolName = toolResult.toolName;
-  if (toolResult.result !== undefined) normalized.result = toolResult.result;
-  if (toolResult.error !== undefined) normalized.error = toolResult.error;
-  return normalized;
 }
 
 function normalizeMessage(message: Message): Message | AssistantMessage {
@@ -111,7 +107,9 @@ export function deserializeConversation(json: unknown): Conversation {
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
     };
-    return toReadonly(conv);
+    const readonly = toReadonly(conv);
+    assertConversationIntegrity(readonly);
+    return readonly;
   } catch (error) {
     throw createSerializationError(
       `failed to deserialize conversation: ${

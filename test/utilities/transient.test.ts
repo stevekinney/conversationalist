@@ -149,7 +149,7 @@ describe('transient utilities', () => {
             createdAt: '2024-01-15T10:00:00.000Z',
             metadata: {},
             hidden: false,
-            tokenUsage: { inputTokens: 10, outputTokens: 20 },
+            tokenUsage: { prompt: 10, completion: 20, total: 30 },
           },
         ],
       });
@@ -161,8 +161,9 @@ describe('transient utilities', () => {
       expect(result.status).toBe('archived');
       expect(getOrderedMessages(result)[0]?.content).toBe('Test');
       expect(getOrderedMessages(result)[0]?.tokenUsage).toEqual({
-        inputTokens: 10,
-        outputTokens: 20,
+        prompt: 10,
+        completion: 20,
+        total: 30,
       });
     });
 
@@ -196,7 +197,7 @@ describe('transient utilities', () => {
             createdAt: '2024-01-15T10:01:00.000Z',
             metadata: { _temp: 2 },
             hidden: false,
-            toolResult: { callId: 'call-1', content: 'Success' },
+            toolResult: { callId: 'call-1', outcome: 'success', content: 'Success' },
           },
         ],
       });
@@ -210,6 +211,7 @@ describe('transient utilities', () => {
       });
       expect(getOrderedMessages(result)[1]?.toolResult).toEqual({
         callId: 'call-1',
+        outcome: 'success',
         content: 'Success',
       });
     });

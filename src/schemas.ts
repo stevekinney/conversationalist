@@ -13,6 +13,12 @@ import type {
   ToolResult,
 } from './types';
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (!value || typeof value !== 'object') return false;
+  const prototype = Reflect.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
 type RawMultiModalContent = {
   type: 'text' | 'image';
   text?: string | undefined;
@@ -31,16 +37,29 @@ function toMultiModalContent(value: RawMultiModalContent): MultiModalContent {
 /**
  * Zod schema for JSON-serializable values.
  */
-export const jsonValueSchema: z.ZodType<JSONValue> = z.lazy(() =>
-  z.union([
+export const jsonValueSchema: z.ZodType<JSONValue> = z.lazy(() => {
+  const jsonObjectSchema = z
+    .record(z.string(), jsonValueSchema)
+    .superRefine((value, ctx) => {
+      if (!isPlainObject(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'expected a plain object',
+        });
+      }
+    });
+
+  return z.union([
     z.string(),
-    z.number(),
+    z.number().refine((value) => Number.isFinite(value), {
+      message: 'expected a finite number',
+    }),
     z.boolean(),
     z.null(),
     z.array(jsonValueSchema),
-    z.record(z.string(), jsonValueSchema),
-  ]),
-) satisfies z.ZodType<JSONValue>;
+    jsonObjectSchema,
+  ]);
+}) satisfies z.ZodType<JSONValue>;
 
 /**
  * Zod schema for multi-modal content parts (text or image).
@@ -76,24 +95,24 @@ export const messageRoleSchema = z.enum([
 /**
  * Zod schema for tool call metadata.
  */
-export const toolCallSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  arguments: jsonValueSchema,
-}) satisfies z.ZodType<ToolCall>;
+export const toolCallSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    arguments: jsonValueSchema,
+  })
+  .strict() satisfies z.ZodType<ToolCall>;
 
 /**
  * Zod schema for tool result metadata.
  */
-export const toolResultSchema = z.object({
-  callId: z.string(),
-  outcome: z.enum(['success', 'error']),
-  content: jsonValueSchema,
-  toolCallId: z.string().optional(),
-  toolName: z.string().optional(),
-  result: jsonValueSchema.optional(),
-  error: z.string().optional(),
-}) satisfies z.ZodType<ToolResult>;
+export const toolResultSchema = z
+  .object({
+    callId: z.string(),
+    outcome: z.enum(['success', 'error']),
+    content: jsonValueSchema,
+  })
+  .strict() satisfies z.ZodType<ToolResult>;
 
 /**
  * Zod schema for token usage accounting.
@@ -107,16 +126,18 @@ export const tokenUsageSchema = z.object({
 /**
  * Zod schema for message input payloads.
  */
-export const messageInputSchema = z.object({
-  role: messageRoleSchema,
-  content: z.union([z.string(), z.array(multiModalContentSchema)]),
-  metadata: z.record(z.string(), jsonValueSchema).optional(),
-  hidden: z.boolean().optional(),
-  toolCall: toolCallSchema.optional(),
-  toolResult: toolResultSchema.optional(),
-  tokenUsage: tokenUsageSchema.optional(),
-  goalCompleted: z.boolean().optional(),
-}) satisfies z.ZodType<MessageInput>;
+export const messageInputSchema = z
+  .object({
+    role: messageRoleSchema,
+    content: z.union([z.string(), z.array(multiModalContentSchema)]),
+    metadata: z.record(z.string(), jsonValueSchema).optional(),
+    hidden: z.boolean().optional(),
+    toolCall: toolCallSchema.optional(),
+    toolResult: toolResultSchema.optional(),
+    tokenUsage: tokenUsageSchema.optional(),
+    goalCompleted: z.boolean().optional(),
+  })
+  .strict() satisfies z.ZodType<MessageInput>;
 
 /**
  * Zod schema for messages.
@@ -135,7 +156,7 @@ export const messageSchema = z
     tokenUsage: tokenUsageSchema.optional(),
     goalCompleted: z.boolean().optional(),
   })
-  .loose() satisfies z.ZodType<Message>;
+  .strict() satisfies z.ZodType<Message>;
 
 /**
  * Zod schema for conversation status values.
@@ -164,6 +185,6 @@ export const conversationShape = {
 /**
  * Zod schema for serialized conversations.
  */
-export const conversationSchema = z.object(
-  conversationShape,
-) satisfies z.ZodType<Conversation>;
+export const conversationSchema = z
+  .object(conversationShape)
+  .strict() satisfies z.ZodType<Conversation>;

@@ -4,7 +4,13 @@ import { toAnthropicMessages } from '../src/adapters/anthropic';
 import { toGeminiMessages } from '../src/adapters/gemini';
 import { toOpenAIMessages, toOpenAIMessagesGrouped } from '../src/adapters/openai';
 import { simpleTokenEstimator, truncateToTokenLimit } from '../src/context';
-import { appendMessages, createConversation } from '../src/conversation/index';
+import {
+  appendMessages,
+  appendUnsafeMessage,
+  createConversation,
+  createConversationUnsafe,
+} from '../src/conversation/index';
+import { ConversationalistError } from '../src/errors';
 import type { Conversation } from '../src/types';
 
 const testEnvironment = {
@@ -68,6 +74,24 @@ function createMultiModalConversation(): Conversation {
       ],
     },
     { role: 'assistant', content: 'I see a cat.' },
+    testEnvironment,
+  );
+  return conv;
+}
+
+function createBrokenToolConversation(): Conversation {
+  let conv = createConversationUnsafe({ id: 'broken' }, testEnvironment);
+  conv = appendUnsafeMessage(
+    conv,
+    {
+      role: 'tool-result',
+      content: '',
+      toolResult: {
+        callId: 'missing',
+        outcome: 'success',
+        content: { ok: true },
+      },
+    },
     testEnvironment,
   );
   return conv;
@@ -266,13 +290,12 @@ describe('OpenAI Adapter', () => {
       }
     });
 
-    it('returns null for unknown roles in convertMessage', () => {
-      let conv = createConversation({ id: 'test' }, testEnvironment);
-      // @ts-expect-error - testing runtime behavior for invalid role
-      conv = appendMessages(conv, { role: 'unknown', content: 'blah' }, testEnvironment);
-
-      const messages = toOpenAIMessages(conv);
-      expect(messages).toHaveLength(0);
+    it('rejects unknown roles before adapter formatting', () => {
+      const conv = createConversation({ id: 'test' }, testEnvironment);
+      expect(() =>
+        // @ts-expect-error - testing runtime behavior for invalid role
+        appendMessages(conv, { role: 'unknown', content: 'blah' }, testEnvironment),
+      ).toThrow(ConversationalistError);
     });
   });
 
@@ -346,6 +369,27 @@ describe('OpenAI Adapter', () => {
       const messages = toOpenAIMessagesGrouped(conv);
       expect(messages).toHaveLength(1);
     });
+  });
+});
+
+describe('Adapter integrity enforcement', () => {
+  const assertIntegrityError = (fn: () => void) => {
+    try {
+      fn();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConversationalistError);
+      expect((error as ConversationalistError).code).toBe('error:integrity');
+      return;
+    }
+    throw new Error('expected integrity error');
+  };
+
+  it('rejects broken tool linkage across adapters', () => {
+    const conv = createBrokenToolConversation();
+    assertIntegrityError(() => toOpenAIMessages(conv));
+    assertIntegrityError(() => toOpenAIMessagesGrouped(conv));
+    assertIntegrityError(() => toAnthropicMessages(conv));
+    assertIntegrityError(() => toGeminiMessages(conv));
   });
 });
 
@@ -572,13 +616,12 @@ describe('Anthropic Adapter', () => {
       }
     });
 
-    it('skips unknown roles', () => {
-      let conv = createConversation({ id: 'test' }, testEnvironment);
-      // @ts-expect-error - testing runtime behavior for invalid role
-      conv = appendMessages(conv, { role: 'unknown', content: 'blah' }, testEnvironment);
-
-      const { messages } = toAnthropicMessages(conv);
-      expect(messages).toHaveLength(0);
+    it('rejects unknown roles before adapter formatting', () => {
+      const conv = createConversation({ id: 'test' }, testEnvironment);
+      expect(() =>
+        // @ts-expect-error - testing runtime behavior for invalid role
+        appendMessages(conv, { role: 'unknown', content: 'blah' }, testEnvironment),
+      ).toThrow(ConversationalistError);
     });
   });
 });
@@ -778,43 +821,17 @@ describe('Gemini Adapter', () => {
       expect(contents).toHaveLength(1);
     });
 
-    it('handles tool results with missing tool call names', () => {
-      // Create a conversation with a tool result but no tool-use message
-      // We have to bypass appendMessages validation, so we'll mock the conversation structure
-      const message = {
-        id: 'm1',
-        role: 'tool-result' as const,
-        content: '',
-        position: 0,
-        createdAt: '2024-01-01T00:00:00.000Z',
-        metadata: {},
-        hidden: false,
-        toolResult: { callId: 'unknown-id', outcome: 'success' as const, content: 'done' },
-      };
-
-      const conv: Conversation = {
-        schemaVersion: 1,
-        id: 'test',
-        status: 'active',
-        metadata: {},
-        ids: [message.id],
-        messages: { [message.id]: message },
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
-      };
-
-      const { contents } = toGeminiMessages(conv);
-      const part = contents[0].parts[0] as any;
-      expect(part.functionResponse.name).toBe('unknown');
+    it('rejects tool results without matching tool calls', () => {
+      const conv = createBrokenToolConversation();
+      expect(() => toGeminiMessages(conv)).toThrow(ConversationalistError);
     });
 
-    it('skips unknown roles', () => {
-      let conv = createConversation({ id: 'test' }, testEnvironment);
-      // @ts-expect-error - testing runtime behavior for invalid role
-      conv = appendMessages(conv, { role: 'unknown', content: 'blah' }, testEnvironment);
-
-      const { contents } = toGeminiMessages(conv);
-      expect(contents).toHaveLength(0);
+    it('rejects unknown roles before adapter formatting', () => {
+      const conv = createConversation({ id: 'test' }, testEnvironment);
+      expect(() =>
+        // @ts-expect-error - testing runtime behavior for invalid role
+        appendMessages(conv, { role: 'unknown', content: 'blah' }, testEnvironment),
+      ).toThrow(ConversationalistError);
     });
 
     it('handles data URLs with missing parts', () => {
