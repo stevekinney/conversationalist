@@ -30,7 +30,7 @@ export type MessageRole =
 export interface ToolCall {
   id: string;
   name: string;
-  arguments: JSONValue;
+  arguments: unknown;
 }
 
 /**
@@ -39,10 +39,10 @@ export interface ToolCall {
 export interface ToolResult {
   callId: string;
   outcome: 'success' | 'error';
-  content: JSONValue;
+  content: unknown;
   toolCallId?: string | undefined;
   toolName?: string | undefined;
-  result?: JSONValue | undefined;
+  result?: unknown;
   error?: string | undefined;
 }
 
