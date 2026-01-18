@@ -1,15 +1,11 @@
-import type { JSONValue, Message, ToolResult } from '../types';
+import type { Message, ToolCall, ToolResult } from '../types';
 
 /**
  * Represents a paired tool call with its optional result.
  */
 export interface ToolCallPair {
   /** The tool call */
-  call: {
-    id: string;
-    name: string;
-    arguments: JSONValue;
-  };
+  call: ToolCall;
   /** The corresponding result, if available */
   result?: ToolResult | undefined;
 }
