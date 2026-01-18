@@ -37,12 +37,23 @@ export {
 } from './schemas';
 
 // Functional conversation API
-export type { ConversationEnvironment } from './conversation';
+export type {
+  AppendToolResultOptions,
+  AppendToolUseOptions,
+  ConversationEnvironment,
+  IntegrityIssue,
+  IntegrityIssueCode,
+  RedactMessageOptions,
+  ToolInteraction,
+} from './conversation/index';
 export {
   appendAssistantMessage,
   appendMessages,
   appendSystemMessage,
+  appendToolResult,
+  appendToolUse,
   appendUserMessage,
+  assertConversationIntegrity,
   collapseSystemMessages,
   createConversation,
   deserializeConversation,
@@ -51,15 +62,18 @@ export {
   getMessageById,
   getMessageIds,
   getMessages,
+  getPendingToolCalls,
   getStatistics,
   getSystemMessages,
+  getToolInteractions,
   hasSystemMessage,
   prependSystemMessage,
   redactMessageAtPosition,
   replaceSystemMessage,
   searchConversationMessages,
   toChatMessages,
-} from './conversation';
+  validateConversationIntegrity,
+} from './conversation/index';
 export { withEnvironment } from './environment';
 
 // Message helpers

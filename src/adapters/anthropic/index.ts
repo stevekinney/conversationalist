@@ -128,14 +128,19 @@ function toAnthropicContent(
  * Converts an internal ToolCall to Anthropic tool_use block.
  */
 function toToolUseBlock(toolCall: ToolCall): AnthropicToolUseBlock {
+  let input: unknown = toolCall.arguments;
+  if (typeof toolCall.arguments === 'string') {
+    try {
+      input = JSON.parse(toolCall.arguments) as unknown;
+    } catch {
+      input = toolCall.arguments;
+    }
+  }
   return {
     type: 'tool_use',
     id: toolCall.id,
     name: toolCall.name,
-    input:
-      typeof toolCall.arguments === 'string'
-        ? JSON.parse(toolCall.arguments)
-        : toolCall.arguments,
+    input,
   };
 }
 

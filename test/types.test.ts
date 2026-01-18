@@ -42,6 +42,16 @@ describe('conversationalist types Type Inference', () => {
       expectTypeOf<ToolCall['name']>().toEqualTypeOf<string>();
       expectTypeOf<ToolCall['arguments']>().toEqualTypeOf<JSONValue>();
     });
+
+    it('rejects non-JSON arguments at compile time', () => {
+      // @ts-expect-error - functions are not JSONValue
+      const badCall: ToolCall = {
+        id: 'call-1',
+        name: 'tool',
+        arguments: () => 1,
+      };
+      void badCall;
+    });
   });
 
   describe('ToolResult', () => {
@@ -49,6 +59,16 @@ describe('conversationalist types Type Inference', () => {
       expectTypeOf<ToolResult['callId']>().toEqualTypeOf<string>();
       expectTypeOf<ToolResult['outcome']>().toEqualTypeOf<'success' | 'error'>();
       expectTypeOf<ToolResult['content']>().toEqualTypeOf<JSONValue>();
+    });
+
+    it('rejects non-JSON content at compile time', () => {
+      // @ts-expect-error - Date is not JSONValue
+      const badResult: ToolResult = {
+        callId: 'call-1',
+        outcome: 'success',
+        content: new Date(),
+      };
+      void badResult;
     });
 
     it('outcome is a discriminated union', () => {

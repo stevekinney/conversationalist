@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createConversation } from '../src/conversation';
+import { createConversation } from '../src/conversation/index';
 import {
   appendStreamingMessage,
   cancelStreamingMessage,
@@ -238,7 +238,7 @@ describe('cancelStreamingMessage', () => {
   });
 
   it('renumbers remaining messages', async () => {
-    const { appendMessages } = await import('../src/conversation');
+    const { appendMessages } = await import('../src/conversation/index');
     let conv = createConversation({ id: 'test' }, testEnvironment);
     conv = appendMessages(conv, { role: 'user', content: 'Hello' }, testEnvironment);
 
@@ -293,7 +293,7 @@ describe('isStreamingMessage', () => {
   });
 
   it('returns false for non-streaming messages', async () => {
-    const { appendMessages } = await import('../src/conversation');
+    const { appendMessages } = await import('../src/conversation/index');
     let conv = createConversation({ id: 'test' }, testEnvironment);
     conv = appendMessages(conv, { role: 'user', content: 'Hello' }, testEnvironment);
 
@@ -334,7 +334,7 @@ describe('getStreamingMessage', () => {
   });
 
   it('returns undefined if no streaming message exists', async () => {
-    const { appendMessages } = await import('../src/conversation');
+    const { appendMessages } = await import('../src/conversation/index');
     let conv = createConversation({ id: 'test' }, testEnvironment);
     conv = appendMessages(conv, { role: 'user', content: 'Hello' }, testEnvironment);
 

@@ -157,14 +157,26 @@ function toGeminiParts(content: string | ReadonlyArray<MultiModalContent>): Gemi
  */
 function toFunctionCallPart(toolCall: ToolCall): GeminiFunctionCallPart {
   let args: Record<string, unknown>;
+
   if (typeof toolCall.arguments === 'string') {
     try {
-      args = JSON.parse(toolCall.arguments) as Record<string, unknown>;
+      const parsed = JSON.parse(toolCall.arguments) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        args = parsed as Record<string, unknown>;
+      } else {
+        args = { _value: parsed };
+      }
     } catch {
       args = { _raw: toolCall.arguments };
     }
-  } else {
+  } else if (
+    toolCall.arguments &&
+    typeof toolCall.arguments === 'object' &&
+    !Array.isArray(toolCall.arguments)
+  ) {
     args = toolCall.arguments as Record<string, unknown>;
+  } else {
+    args = { _value: toolCall.arguments };
   }
 
   return {

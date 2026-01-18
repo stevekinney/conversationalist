@@ -1,6 +1,7 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
 import { truncateFromPosition, truncateToTokenLimit } from './context';
+import type { RedactMessageOptions } from './conversation/index';
 import {
   appendAssistantMessage,
   appendMessages,
@@ -10,7 +11,7 @@ import {
   prependSystemMessage,
   redactMessageAtPosition,
   replaceSystemMessage,
-} from './conversation';
+} from './conversation/index';
 import {
   appendStreamingMessage,
   cancelStreamingMessage,
@@ -103,7 +104,10 @@ export interface ConversationDraft {
    * @param position - The message position to redact.
    * @param placeholder - Replacement text (default: '[REDACTED]').
    */
-  redactMessageAtPosition: (position: number, placeholder?: string) => ConversationDraft;
+  redactMessageAtPosition: (
+    position: number,
+    placeholderOrOptions?: string | RedactMessageOptions,
+  ) => ConversationDraft;
 
   /**
    * Appends a streaming message placeholder.
@@ -149,7 +153,7 @@ export interface ConversationDraft {
    */
   truncateFromPosition: (
     position: number,
-    options?: { preserveSystemMessages?: boolean },
+    options?: { preserveSystemMessages?: boolean; preserveToolPairs?: boolean },
   ) => ConversationDraft;
 
   /**
@@ -164,6 +168,7 @@ export interface ConversationDraft {
       estimateTokens?: (message: Message) => number;
       preserveSystemMessages?: boolean;
       preserveLastN?: number;
+      preserveToolPairs?: boolean;
     },
   ) => ConversationDraft;
 }
@@ -212,8 +217,8 @@ function createDraft(initial: Conversation): ConversationDraft {
     },
 
     // Message modification
-    redactMessageAtPosition: (position, placeholder) => {
-      current = redactMessageAtPosition(current, position, placeholder);
+    redactMessageAtPosition: (position, placeholderOrOptions) => {
+      current = redactMessageAtPosition(current, position, placeholderOrOptions);
       return draft;
     },
 

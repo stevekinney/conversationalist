@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   ConversationalistError,
   createDuplicateIdError,
+  createIntegrityError,
   createInvalidInputError,
   createInvalidPositionError,
   createInvalidToolReferenceError,
@@ -59,5 +60,11 @@ describe('errors', () => {
     const e = createValidationError('oops', { why: 'x' });
     expect(e.code).toBe('error:validation');
     expect(e.toDetailedString()).toContain('oops');
+  });
+
+  test('integrity', () => {
+    const e = createIntegrityError('integrity failed', { issues: ['x'] });
+    expect(e.code).toBe('error:integrity');
+    expect(e.toDetailedString()).toContain('integrity failed');
   });
 });

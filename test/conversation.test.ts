@@ -21,10 +21,9 @@ import {
   replaceSystemMessage,
   searchConversationMessages,
   toChatMessages,
-} from '../src/conversation';
+} from '../src/conversation/index';
 import { ConversationalistError } from '../src/errors';
 import type { Conversation, Message } from '../src/types';
-import { CURRENT_SCHEMA_VERSION, migrateConversation } from '../src/versioning';
 
 const getOrderedMessages = (conversation: Conversation): Message[] =>
   conversation.ids
@@ -55,6 +54,53 @@ describe('conversation (functional)', () => {
     c = appendUserMessage(c, 'secret');
     c = redactMessageAtPosition(c, 0, '[REDACTED]');
     expect(getOrderedMessages(c)[0]!.content).toBe('[REDACTED]');
+  });
+
+  test('redaction preserves tool metadata by default', () => {
+    let c = createConversation();
+    c = appendMessages(
+      c,
+      {
+        role: 'tool-use',
+        content: '',
+        toolCall: { id: 'call-1', name: 'tool', arguments: { key: 'value' } },
+      },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: {
+          callId: 'call-1',
+          outcome: 'success',
+          content: { ok: true },
+        },
+      },
+    );
+
+    c = redactMessageAtPosition(c, 0, { placeholder: '[MASKED]' });
+    const toolUse = getOrderedMessages(c)[0]!;
+    expect(toolUse.toolCall?.id).toBe('call-1');
+    expect(toolUse.toolCall?.name).toBe('tool');
+    expect(toolUse.toolCall?.arguments).toBe('[MASKED]');
+
+    c = redactMessageAtPosition(c, 1, { placeholder: '[MASKED]' });
+    const toolResult = getOrderedMessages(c)[1]!;
+    expect(toolResult.toolResult?.callId).toBe('call-1');
+    expect(toolResult.toolResult?.outcome).toBe('success');
+    expect(toolResult.toolResult?.content).toBe('[MASKED]');
+  });
+
+  test('redaction can clear tool metadata when requested', () => {
+    let c = createConversation();
+    c = appendMessages(c, {
+      role: 'tool-use',
+      content: '',
+      toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+    });
+
+    c = redactMessageAtPosition(c, 0, { clearToolMetadata: true });
+    const message = getOrderedMessages(c)[0]!;
+    expect(message.toolCall).toBeUndefined();
+    expect(message.toolResult).toBeUndefined();
   });
 
   test('getMessages includeHidden and lookup helpers', () => {
@@ -114,11 +160,13 @@ describe('conversation (functional)', () => {
     const now = new Date().toISOString();
     // Position mismatch
     const badPos = {
+      schemaVersion: 1,
       id: 'c',
       status: 'active' as const,
       metadata: {},
-      messages: [
-        {
+      ids: ['m1'],
+      messages: {
+        m1: {
           id: 'm1',
           role: 'user',
           content: 'x',
@@ -127,7 +175,7 @@ describe('conversation (functional)', () => {
           metadata: {},
           hidden: false,
         },
-      ],
+      },
       createdAt: now,
       updatedAt: now,
     };
@@ -135,11 +183,13 @@ describe('conversation (functional)', () => {
 
     // Missing tool reference
     const badTool = {
+      schemaVersion: 1,
       id: 'c2',
       status: 'active' as const,
       metadata: {},
-      messages: [
-        {
+      ids: ['t'],
+      messages: {
+        t: {
           id: 't',
           role: 'tool-result',
           content: 'x',
@@ -149,7 +199,7 @@ describe('conversation (functional)', () => {
           hidden: false,
           toolResult: { callId: 'nope', outcome: 'error', content: {} },
         },
-      ],
+      },
       createdAt: now,
       updatedAt: now,
     };
@@ -580,62 +630,5 @@ describe('system message management', () => {
     expect(c3.updatedAt).toBeDefined();
     expect(c5.updatedAt).toBeDefined();
     expect(new Date(c2.updatedAt).toISOString()).toBe(c2.updatedAt);
-  });
-});
-
-describe('migrateConversation', () => {
-  test('handles null input', () => {
-    const result = migrateConversation(null);
-    expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
-    expect(result.id).toBe('');
-    expect(result.status).toBe('active');
-    expect(result.ids).toEqual([]);
-    expect(result.messages).toEqual({});
-  });
-
-  test('handles array input', () => {
-    const result = migrateConversation([]);
-    expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
-    expect(result.id).toBe('');
-    expect(result.ids).toEqual([]);
-  });
-
-  test('handles primitive input', () => {
-    const result = migrateConversation('string');
-    expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
-    expect(result.id).toBe('');
-    expect(result.ids).toEqual([]);
-  });
-
-  test('adds schemaVersion to legacy data', () => {
-    const legacy = {
-      id: 'conv-1',
-      status: 'active',
-      metadata: {},
-      messages: [],
-      createdAt: '2024-01-15T10:00:00.000Z',
-      updatedAt: '2024-01-15T10:00:00.000Z',
-    };
-
-    const result = migrateConversation(legacy);
-    expect(result.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
-    expect(result.id).toBe('conv-1');
-    expect(result.ids).toEqual([]);
-  });
-
-  test('preserves existing schemaVersion', () => {
-    const data = {
-      schemaVersion: 99,
-      id: 'conv-1',
-      status: 'active',
-      metadata: {},
-      messages: [],
-      createdAt: '2024-01-15T10:00:00.000Z',
-      updatedAt: '2024-01-15T10:00:00.000Z',
-    };
-
-    const result = migrateConversation(data);
-    expect(result.schemaVersion).toBe(99);
-    expect(result.ids).toEqual([]);
   });
 });

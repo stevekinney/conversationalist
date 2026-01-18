@@ -78,33 +78,38 @@ export function appendMessages(
     messages: Message[];
   }>(
     (state, input, index) => {
-      if (input.role === 'tool-result' && input.toolResult) {
-        assertToolReference(state.toolUses, input.toolResult.callId);
+      const processedInput = resolvedEnvironment.plugins.reduce(
+        (acc, plugin) => plugin(acc),
+        input,
+      );
+
+      if (processedInput.role === 'tool-result' && processedInput.toolResult) {
+        assertToolReference(state.toolUses, processedInput.toolResult.callId);
       }
 
-      const normalizedContent = normalizeContent(input.content) as
+      const normalizedContent = normalizeContent(processedInput.content) as
         | string
         | MultiModalContent[];
 
       const baseMessage = {
         id: resolvedEnvironment.randomId(),
-        role: input.role,
+        role: processedInput.role,
         content: normalizedContent,
         position: startPosition + index,
         createdAt: now,
-        metadata: { ...(input.metadata ?? {}) },
-        hidden: input.hidden ?? false,
-        toolCall: input.toolCall,
-        toolResult: input.toolResult,
-        tokenUsage: input.tokenUsage,
+        metadata: { ...(processedInput.metadata ?? {}) },
+        hidden: processedInput.hidden ?? false,
+        toolCall: processedInput.toolCall,
+        toolResult: processedInput.toolResult,
+        tokenUsage: processedInput.tokenUsage,
       };
 
       let message: Message;
-      if (input.role === 'assistant') {
+      if (processedInput.role === 'assistant') {
         const assistantMessage: AssistantMessage = {
           ...baseMessage,
           role: 'assistant',
-          goalCompleted: input.goalCompleted,
+          goalCompleted: processedInput.goalCompleted,
         };
         message = createMessage(assistantMessage);
       } else {
@@ -112,8 +117,8 @@ export function appendMessages(
       }
 
       const toolUses =
-        input.role === 'tool-use' && input.toolCall
-          ? registerToolUse(state.toolUses, input.toolCall)
+        processedInput.role === 'tool-use' && processedInput.toolCall
+          ? registerToolUse(state.toolUses, processedInput.toolCall)
           : state.toolUses;
 
       return {

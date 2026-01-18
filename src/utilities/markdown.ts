@@ -40,9 +40,6 @@ export const ROLE_LABELS: Record<MessageRole, string> = {
   snapshot: 'Snapshot',
 };
 
-// Internal alias for backward compatibility
-const ROLE_DISPLAY_NAMES = ROLE_LABELS;
-
 /**
  * Maps display labels back to message roles.
  *
@@ -61,9 +58,6 @@ export const LABEL_TO_ROLE: Record<string, MessageRole> = {
   'Tool Result': 'tool-result',
   Snapshot: 'snapshot',
 };
-
-// Internal alias for backward compatibility
-const DISPLAY_NAME_TO_ROLE = LABEL_TO_ROLE;
 
 /**
  * Gets the human-readable display label for a message role.
@@ -298,7 +292,7 @@ function toMarkdownSimple(conversation: Conversation): string {
   const sections: string[] = [];
 
   for (const message of getOrderedMessages(conversation)) {
-    const roleName = ROLE_DISPLAY_NAMES[message.role];
+    const roleName = ROLE_LABELS[message.role];
     const header = `### ${roleName}`;
     const content = formatMessageContent(message);
     sections.push(`${header}\n\n${content}`);
@@ -365,7 +359,7 @@ function toMarkdownWithMetadata(
   const messageSections: string[] = [];
 
   for (const message of getOrderedMessages(conversation)) {
-    const roleName = ROLE_DISPLAY_NAMES[message.role];
+    const roleName = ROLE_LABELS[message.role];
     const header = `### ${roleName} (${message.id})`;
     const content = formatMessageContent(message);
     messageSections.push(`${header}\n\n${content}`);
@@ -458,7 +452,7 @@ function parseMarkdownWithMetadata(trimmed: string): Conversation {
   while ((match = messagePattern.exec(body)) !== null) {
     const [, roleDisplay, messageId, contentBody] = match;
 
-    const role = DISPLAY_NAME_TO_ROLE[roleDisplay!];
+    const role = LABEL_TO_ROLE[roleDisplay!];
     if (!role) {
       throw new MarkdownParseError(`Unknown role: ${roleDisplay}`);
     }
@@ -538,7 +532,7 @@ function parseMarkdownSimple(body: string): Conversation {
   while ((match = messagePattern.exec(body)) !== null) {
     const [, roleDisplay, contentBody] = match;
 
-    const role = DISPLAY_NAME_TO_ROLE[roleDisplay!];
+    const role = LABEL_TO_ROLE[roleDisplay!];
     if (!role) {
       throw new MarkdownParseError(`Unknown role: ${roleDisplay}`);
     }

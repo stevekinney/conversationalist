@@ -9,7 +9,8 @@ export type ConversationalistErrorCode =
   | 'error:duplicate-id'
   | 'error:not-found'
   | 'error:serialization'
-  | 'error:validation';
+  | 'error:validation'
+  | 'error:integrity';
 
 /**
  * Base error class for all Conversationalist errors.
@@ -162,4 +163,15 @@ export function createValidationError(
   cause?: Error,
 ): ConversationalistError {
   return new ConversationalistError('error:validation', message, { context, cause });
+}
+
+/**
+ * Creates an integrity error (ERR_INTEGRITY).
+ * Thrown when conversation invariants are violated.
+ */
+export function createIntegrityError(
+  message: string,
+  context?: Record<string, unknown>,
+): ConversationalistError {
+  return new ConversationalistError('error:integrity', message, { context });
 }

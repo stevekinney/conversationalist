@@ -5,7 +5,7 @@ import {
   appendAssistantMessage,
   appendUserMessage,
   createConversation,
-} from '../src/conversation';
+} from '../src/conversation/index';
 import { isStreamingMessage } from '../src/streaming';
 import type { Conversation, Message } from '../src/types';
 import { pipeConversation, withConversation } from '../src/with-conversation';

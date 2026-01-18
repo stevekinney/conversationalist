@@ -1,6 +1,3 @@
-// Re-export types that were moved to types.ts for backward compatibility
-export type { ToMarkdownOptions } from '../types';
-
 // Content normalization
 export { normalizeContent, toMultiModalArray } from './content';
 

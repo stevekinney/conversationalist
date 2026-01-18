@@ -14,6 +14,7 @@ import {
   type TruncateOptions,
   truncateToTokenLimit,
 } from './context';
+import type { RedactMessageOptions } from './conversation/index';
 import {
   appendAssistantMessage,
   appendMessages,
@@ -35,7 +36,7 @@ import {
   replaceSystemMessage,
   searchConversationMessages,
   toChatMessages,
-} from './conversation';
+} from './conversation/index';
 import {
   type ConversationEnvironment,
   resolveConversationEnvironment,
@@ -443,7 +444,11 @@ export class ConversationHistory extends EventTarget {
    */
   getRecentMessages(
     count: number,
-    options?: { includeHidden?: boolean; includeSystem?: boolean },
+    options?: {
+      includeHidden?: boolean;
+      includeSystem?: boolean;
+      preserveToolPairs?: boolean;
+    },
   ): ReadonlyArray<Message> {
     return getRecentMessages(this.current, count, options);
   }
@@ -515,8 +520,13 @@ export class ConversationHistory extends EventTarget {
   /**
    * Redacts the message at the given position.
    */
-  redactMessageAtPosition(position: number, placeholder?: string): void {
-    this.push(redactMessageAtPosition(this.current, position, placeholder, this.env));
+  redactMessageAtPosition(
+    position: number,
+    placeholderOrOptions?: string | RedactMessageOptions,
+  ): void {
+    this.push(
+      redactMessageAtPosition(this.current, position, placeholderOrOptions, this.env),
+    );
   }
 
   /**
@@ -524,7 +534,7 @@ export class ConversationHistory extends EventTarget {
    */
   truncateFromPosition(
     position: number,
-    options?: { preserveSystemMessages?: boolean },
+    options?: { preserveSystemMessages?: boolean; preserveToolPairs?: boolean },
   ): void {
     this.push(truncateFromPosition(this.current, position, options, this.env));
   }

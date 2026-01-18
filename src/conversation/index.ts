@@ -33,10 +33,28 @@ export {
 } from './system-messages';
 
 // Modify
+export type { RedactMessageOptions } from './modify';
 export { redactMessageAtPosition } from './modify';
 
 // Serialization
-export { deserializeConversation, migrateConversation } from './serialization';
+export { deserializeConversation } from './serialization';
+
+// Integrity
+export type { IntegrityIssue, IntegrityIssueCode } from './integrity';
+export { assertConversationIntegrity, validateConversationIntegrity } from './integrity';
 
 // Transform
 export { toChatMessages } from './transform';
+
+// Tool interactions
+export type {
+  AppendToolResultOptions,
+  AppendToolUseOptions,
+  ToolInteraction,
+} from './tool-interactions';
+export {
+  appendToolResult,
+  appendToolUse,
+  getPendingToolCalls,
+  getToolInteractions,
+} from './tool-interactions';

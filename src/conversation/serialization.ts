@@ -1,94 +1,51 @@
 import { createInvalidPositionError, createSerializationError } from '../errors';
-import type { Conversation, Message } from '../types';
-import { CURRENT_SCHEMA_VERSION } from '../types';
-import { createMessage, toReadonly } from '../utilities';
+import { conversationSchema } from '../schemas';
+import type { AssistantMessage, Conversation, Message, ToolResult } from '../types';
+import { createMessage, isAssistantMessage, toReadonly } from '../utilities';
 import { toIdRecord } from '../utilities/message-store';
 import { assertToolReference, registerToolUse, type ToolUseIndex } from './tool-tracking';
 
-/**
- * Migrates a serialized conversation object to the current schema version.
- * Handles data from older versions that may not have a schemaVersion field.
- *
- * @param json - The conversation data to migrate (may be from an older version)
- * @returns A Conversation with the current schema version
- *
- * @example
- * ```ts
- * // Old data without schemaVersion
- * const old = { id: 'conv-1', status: 'active', ... };
- * const migrated = migrateConversation(old);
- * // migrated.schemaVersion === CURRENT_SCHEMA_VERSION
- * ```
- */
-export function migrateConversation(json: unknown): Conversation {
-  // Handle non-object input
-  if (typeof json !== 'object' || json === null || Array.isArray(json)) {
+function normalizeToolResult(toolResult: Message['toolResult']): ToolResult | undefined {
+  if (!toolResult) return undefined;
+  const normalized: ToolResult = {
+    callId: toolResult.callId,
+    outcome: toolResult.outcome,
+    content: toolResult.content,
+  };
+  if (toolResult.toolCallId !== undefined) normalized.toolCallId = toolResult.toolCallId;
+  if (toolResult.toolName !== undefined) normalized.toolName = toolResult.toolName;
+  if (toolResult.result !== undefined) normalized.result = toolResult.result;
+  if (toolResult.error !== undefined) normalized.error = toolResult.error;
+  return normalized;
+}
+
+function normalizeMessage(message: Message): Message | AssistantMessage {
+  const base: Message = {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    position: message.position,
+    createdAt: message.createdAt,
+    metadata: message.metadata,
+    hidden: message.hidden,
+    toolCall: message.toolCall ? { ...message.toolCall } : undefined,
+    toolResult: normalizeToolResult(message.toolResult),
+    tokenUsage: message.tokenUsage ? { ...message.tokenUsage } : undefined,
+  };
+
+  if (isAssistantMessage(message)) {
     return {
-      schemaVersion: CURRENT_SCHEMA_VERSION,
-      id: '',
-      status: 'active',
-      metadata: {},
-      ids: [],
-      messages: {},
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      ...base,
+      role: 'assistant',
+      goalCompleted: message.goalCompleted,
     };
   }
 
-  const data = json as Conversation & { messages?: unknown };
-  const rawMessages = data.messages;
-
-  let messages: Record<string, Message> = {};
-  let ids: string[] = [];
-  const rawIds = (data as { ids?: unknown }).ids;
-  const isStringArray = (value: unknown): value is string[] =>
-    Array.isArray(value) && value.every((item) => typeof item === 'string');
-
-  if (Array.isArray(rawMessages)) {
-    const rawMessageArray = rawMessages as Message[];
-    ids = rawMessageArray.map((message) => message.id);
-    messages = Object.fromEntries(
-      rawMessageArray.map((message) => [message.id, message]),
-    );
-  } else if (rawMessages && typeof rawMessages === 'object') {
-    messages = { ...(rawMessages as Record<string, Message>) };
-    if (isStringArray(rawIds) && rawIds.length > 0) {
-      ids = [...rawIds];
-    } else {
-      ids = Object.values(messages)
-        .sort((a, b) => a.position - b.position)
-        .map((message) => message.id);
-    }
-  }
-
-  if (ids.length > 0) {
-    ids = ids.filter((id) => id in messages);
-    const missing = Object.keys(messages).filter((id) => !ids.includes(id));
-    if (missing.length > 0) {
-      const sortedMissing = missing.sort(
-        (a, b) => (messages[a]?.position ?? 0) - (messages[b]?.position ?? 0),
-      );
-      ids = [...ids, ...sortedMissing];
-    }
-  }
-
-  // If no schemaVersion, assume pre-versioning data (version 0) and add it
-  if (!('schemaVersion' in json)) {
-    return {
-      ...data,
-      schemaVersion: CURRENT_SCHEMA_VERSION,
-      ids,
-      messages,
-    };
-  }
-
-  // Future: add migration logic between versions here
-  return { ...data, ids, messages };
+  return base;
 }
 
 /**
  * Reconstructs a conversation from a JSON object.
- * Automatically migrates data from older schema versions.
  * Validates message positions are contiguous and tool results reference valid calls.
  * Throws a serialization error if validation fails.
  *
@@ -97,20 +54,31 @@ export function migrateConversation(json: unknown): Conversation {
  * @throws {SerializationError} If validation fails
  */
 export function deserializeConversation(json: unknown): Conversation {
-  // Migrate to current schema version
-  const migrated = migrateConversation(json);
+  const parsed = conversationSchema.safeParse(json);
+  if (!parsed.success) {
+    throw createSerializationError('failed to deserialize conversation: invalid data');
+  }
+  const data = parsed.data;
 
   try {
-    const orderedMessages = migrated.ids.map((id, index) => {
-      const message = migrated.messages[id];
+    const messageIds = new Set(Object.keys(data.messages));
+    const orderedMessages = data.ids.map((id, index) => {
+      const message = data.messages[id];
       if (!message) {
         throw createSerializationError(`missing message for id ${id}`);
       }
       if (message.position !== index) {
         throw createInvalidPositionError(index, message.position);
       }
-      return message;
+      messageIds.delete(id);
+      return normalizeMessage(message);
     });
+
+    if (messageIds.size > 0) {
+      throw createSerializationError(
+        `messages not listed in ids: ${[...messageIds].join(', ')}`,
+      );
+    }
 
     orderedMessages.reduce<{ toolUses: ToolUseIndex }>(
       (state, message) => {
@@ -129,17 +97,19 @@ export function deserializeConversation(json: unknown): Conversation {
       { toolUses: new Map<string, { name: string }>() },
     );
 
-    const messageInstances: Message[] = orderedMessages.map((m) => createMessage(m));
+    const messageInstances: Message[] = orderedMessages.map((message) =>
+      createMessage(message),
+    );
     const conv: Conversation = {
-      schemaVersion: migrated.schemaVersion,
-      id: migrated.id,
-      title: migrated.title,
-      status: migrated.status,
-      metadata: { ...migrated.metadata },
+      schemaVersion: data.schemaVersion,
+      id: data.id,
+      title: data.title,
+      status: data.status,
+      metadata: { ...data.metadata },
       ids: orderedMessages.map((message) => message.id),
       messages: toIdRecord(messageInstances),
-      createdAt: migrated.createdAt,
-      updatedAt: migrated.updatedAt,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
     };
     return toReadonly(conv);
   } catch (error) {

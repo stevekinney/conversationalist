@@ -3,7 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import { toAnthropicMessages } from '../src/adapters/anthropic';
 import { toGeminiMessages } from '../src/adapters/gemini';
 import { toOpenAIMessages, toOpenAIMessagesGrouped } from '../src/adapters/openai';
-import { appendMessages, createConversation } from '../src/conversation';
+import { simpleTokenEstimator, truncateToTokenLimit } from '../src/context';
+import { appendMessages, createConversation } from '../src/conversation/index';
 import type { Conversation } from '../src/types';
 
 const testEnvironment = {
@@ -221,6 +222,48 @@ describe('OpenAI Adapter', () => {
       const messages = toOpenAIMessages(conv);
       const toolMsg = messages.find((m) => m.role === 'tool');
       expect(toolMsg?.content).toBe('String result');
+    });
+
+    it('does not emit tool results without matching tool calls after truncation', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: 'Run tool' },
+        {
+          role: 'tool-use',
+          content: '',
+          toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+        },
+        testEnvironment,
+      );
+
+      const truncated = truncateToTokenLimit(
+        conv,
+        1,
+        { estimateTokens: simpleTokenEstimator, preserveLastN: 1 },
+        testEnvironment,
+      );
+      const messages = toOpenAIMessages(truncated);
+
+      const toolCallIds = new Set<string>();
+      for (const message of messages) {
+        if (message.role === 'assistant' && message.tool_calls) {
+          for (const call of message.tool_calls) {
+            toolCallIds.add(call.id);
+          }
+        }
+      }
+
+      for (const message of messages) {
+        if (message.role === 'tool') {
+          expect(toolCallIds.has(message.tool_call_id)).toBe(true);
+        }
+      }
     });
 
     it('returns null for unknown roles in convertMessage', () => {

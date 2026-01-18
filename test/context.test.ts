@@ -7,7 +7,7 @@ import {
   truncateFromPosition,
   truncateToTokenLimit,
 } from '../src/context';
-import { appendMessages, createConversation } from '../src/conversation';
+import { appendMessages, createConversation } from '../src/conversation/index';
 import { isConversationEnvironmentParameter } from '../src/environment';
 import type { Conversation, Message } from '../src/types';
 import { createMessage } from '../src/utilities';
@@ -82,6 +82,29 @@ describe('getRecentMessages', () => {
     const recent = getRecentMessages(conv, 10);
     expect(recent).toHaveLength(1);
     expect(recent[0]?.content).toBe('Visible');
+  });
+
+  it('preserves tool-use when the recent slice includes a tool-result', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(
+      conv,
+      { role: 'user', content: 'Before' },
+      {
+        role: 'tool-use',
+        content: '',
+        toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+      },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+      },
+      testEnvironment,
+    );
+
+    const recent = getRecentMessages(conv, 1);
+    expect(recent.some((m) => m.role === 'tool-use')).toBe(true);
+    expect(recent.some((m) => m.role === 'tool-result')).toBe(true);
   });
 });
 
@@ -169,6 +192,31 @@ describe('truncateFromPosition', () => {
     const truncated = truncateFromPosition(conv, 1, undefined, testEnvironment);
     expect(getOrderedMessages(truncated)).toHaveLength(1);
     expect(Array.isArray(getOrderedMessages(truncated)[0].content)).toBe(true);
+  });
+
+  it('preserves tool-use when truncating from a position that includes a tool-result', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(
+      conv,
+      { role: 'user', content: 'Hello' },
+      {
+        role: 'tool-use',
+        content: '',
+        toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+      },
+      { role: 'assistant', content: 'Waiting' },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+      },
+      testEnvironment,
+    );
+
+    const truncated = truncateFromPosition(conv, 3, undefined, testEnvironment);
+    const messages = getOrderedMessages(truncated);
+    expect(messages.some((m) => m.role === 'tool-use')).toBe(true);
+    expect(messages.some((m) => m.role === 'tool-result')).toBe(true);
   });
 });
 
@@ -400,6 +448,39 @@ describe('truncateToTokenLimit', () => {
 
     // Should handle toolCall and toolResult properties
     expect(getOrderedMessages(truncated).length).toBeGreaterThan(0);
+  });
+
+  it('preserves tool pairs when a tool-result is protected by preserveLastN', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(
+      conv,
+      { role: 'user', content: 'Start' },
+      {
+        role: 'tool-use',
+        content: '',
+        toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+      },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+      },
+      testEnvironment,
+    );
+
+    const truncated = truncateToTokenLimit(
+      conv,
+      1,
+      {
+        estimateTokens: simpleTokenEstimator,
+        preserveLastN: 1,
+      },
+      testEnvironment,
+    );
+
+    const messages = getOrderedMessages(truncated);
+    expect(messages.some((m) => m.role === 'tool-use')).toBe(true);
+    expect(messages.some((m) => m.role === 'tool-result')).toBe(true);
   });
 
   it('handles messages with token usage during truncation', () => {

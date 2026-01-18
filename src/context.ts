@@ -43,6 +43,119 @@ const cloneMessageWithPosition = (
   return createMessage(baseMessage);
 };
 
+type MessageBlock = {
+  messages: Message[];
+  minPosition: number;
+  maxPosition: number;
+  tokenCount: number;
+  orphanToolResult?: boolean;
+};
+
+const createMessageBlock = (
+  message: Message,
+  estimator: TokenEstimator,
+): MessageBlock => ({
+  messages: [message],
+  minPosition: message.position,
+  maxPosition: message.position,
+  tokenCount: estimator(message),
+});
+
+const buildMessageBlocks = (
+  messages: ReadonlyArray<Message>,
+  estimator: TokenEstimator,
+  preserveToolPairs: boolean,
+): {
+  blocks: MessageBlock[];
+  messageToBlock: Map<string, MessageBlock>;
+} => {
+  if (!preserveToolPairs) {
+    const blocks = messages.map((message) => createMessageBlock(message, estimator));
+    const messageToBlock = new Map<string, MessageBlock>();
+    for (const block of blocks) {
+      const message = block.messages[0];
+      if (message) {
+        messageToBlock.set(message.id, block);
+      }
+    }
+    return { blocks, messageToBlock };
+  }
+
+  const blocks: MessageBlock[] = [];
+  const toolUses = new Map<string, MessageBlock>();
+
+  for (const message of messages) {
+    if (message.role === 'tool-use' && message.toolCall) {
+      const block = createMessageBlock(message, estimator);
+      toolUses.set(message.toolCall.id, block);
+      blocks.push(block);
+      continue;
+    }
+
+    if (message.role === 'tool-result' && message.toolResult) {
+      const existing = toolUses.get(message.toolResult.callId);
+      if (existing) {
+        existing.messages.push(message);
+        existing.maxPosition = Math.max(existing.maxPosition, message.position);
+        existing.tokenCount += estimator(message);
+        continue;
+      }
+
+      const orphanBlock = createMessageBlock(message, estimator);
+      orphanBlock.orphanToolResult = true;
+      blocks.push(orphanBlock);
+      continue;
+    }
+
+    blocks.push(createMessageBlock(message, estimator));
+  }
+
+  const filteredBlocks = blocks.filter((block) => !block.orphanToolResult);
+  const messageToBlock = new Map<string, MessageBlock>();
+  for (const block of filteredBlocks) {
+    for (const message of block.messages) {
+      messageToBlock.set(message.id, block);
+    }
+  }
+
+  return { blocks: filteredBlocks, messageToBlock };
+};
+
+const collectBlocksForMessages = (
+  messages: ReadonlyArray<Message>,
+  messageToBlock: Map<string, MessageBlock>,
+): MessageBlock[] => {
+  const blocks: MessageBlock[] = [];
+  const seen = new Set<MessageBlock>();
+
+  for (const message of messages) {
+    const block = messageToBlock.get(message.id);
+    if (block && !seen.has(block)) {
+      seen.add(block);
+      blocks.push(block);
+    }
+  }
+
+  return blocks;
+};
+
+const collectMessagesFromBlocks = (blocks: ReadonlyArray<MessageBlock>): Message[] => {
+  const messages: Message[] = [];
+  const seen = new Set<string>();
+
+  for (const block of blocks) {
+    for (const message of block.messages) {
+      if (!seen.has(message.id)) {
+        seen.add(message.id);
+        messages.push(message);
+      }
+    }
+  }
+
+  messages.sort((a, b) => a.position - b.position);
+  return messages;
+};
+
 /**
  * Estimates total tokens in a conversation using the provided estimator function.
  * If no estimator is provided, the environment's default estimator is used.
@@ -81,12 +194,14 @@ export interface TruncateOptions {
   estimateTokens?: TokenEstimator;
   preserveSystemMessages?: boolean;
   preserveLastN?: number;
+  preserveToolPairs?: boolean;
 }
 
 /**
  * Truncates conversation to fit within an estimated token limit.
  * Removes oldest messages first while preserving system messages and optionally the last N messages.
  * If no estimator is provided, the environment's default estimator is used.
+ * Tool interactions are preserved as atomic blocks by default.
  */
 export function truncateToTokenLimit(
   conversation: Conversation,
@@ -129,6 +244,7 @@ export function truncateToTokenLimit(
   const estimator = options.estimateTokens ?? resolvedEnvironment.estimateTokens;
   const preserveSystem = options.preserveSystemMessages ?? true;
   const preserveLastN = options.preserveLastN ?? 0;
+  const preserveToolPairs = options.preserveToolPairs ?? true;
 
   // Calculate current token count
   const currentTokens = estimateConversationTokens(
@@ -142,62 +258,56 @@ export function truncateToTokenLimit(
 
   const now = resolvedEnvironment.now();
 
-  // Separate messages into categories
   const orderedMessages = getOrderedMessages(conversation);
+  const { blocks, messageToBlock } = buildMessageBlocks(
+    orderedMessages,
+    estimator,
+    preserveToolPairs,
+  );
+
   const systemMessages = preserveSystem
     ? orderedMessages.filter((m) => m.role === 'system')
     : [];
-
   const nonSystemMessages = orderedMessages.filter((m) => m.role !== 'system');
-
-  // Preserve the last N non-system messages
   const protectedMessages =
     preserveLastN > 0 ? nonSystemMessages.slice(-preserveLastN) : [];
 
-  const removableMessages =
-    preserveLastN > 0 ? nonSystemMessages.slice(0, -preserveLastN) : nonSystemMessages;
+  const systemBlocks = collectBlocksForMessages(systemMessages, messageToBlock);
+  const protectedBlocks = collectBlocksForMessages(protectedMessages, messageToBlock);
+  const lockedBlocks = new Set([...systemBlocks, ...protectedBlocks]);
+  const removableBlocks = blocks.filter((block) => !lockedBlocks.has(block));
 
-  // Calculate tokens for protected content
-  const systemTokens = systemMessages.reduce((sum, m) => sum + estimator(m), 0);
-  const protectedTokens = protectedMessages.reduce((sum, m) => sum + estimator(m), 0);
+  const systemTokens = systemBlocks.reduce((sum, block) => sum + block.tokenCount, 0);
+  const protectedTokens = protectedBlocks.reduce(
+    (sum, block) => sum + block.tokenCount,
+    0,
+  );
   const availableTokens = maxTokens - systemTokens - protectedTokens;
 
+  let selectedBlocks: MessageBlock[] = [];
   if (availableTokens <= 0) {
-    // Can only fit system and protected messages
-    const allMessages = [...systemMessages, ...protectedMessages];
-    const renumbered = allMessages.map((message, index) =>
-      cloneMessageWithPosition(message, index, copyContent(message.content)),
+    selectedBlocks = [...systemBlocks, ...protectedBlocks];
+  } else {
+    const sortedRemovable = [...removableBlocks].sort(
+      (a, b) => a.maxPosition - b.maxPosition,
     );
+    const keptRemovable: MessageBlock[] = [];
+    let usedTokens = 0;
 
-    return toReadonly({
-      ...conversation,
-      ids: renumbered.map((message) => message.id),
-      messages: toIdRecord(renumbered),
-      updatedAt: now,
-    });
-  }
-
-  // Keep as many removable messages as possible, starting from the end (most recent)
-  const keptRemovable: Message[] = [];
-  let usedTokens = 0;
-
-  for (let i = removableMessages.length - 1; i >= 0; i--) {
-    const message = removableMessages[i]!;
-    const messageTokens = estimator(message);
-    if (usedTokens + messageTokens <= availableTokens) {
-      keptRemovable.unshift(message);
-      usedTokens += messageTokens;
-    } else {
-      break;
+    for (let i = sortedRemovable.length - 1; i >= 0; i--) {
+      const block = sortedRemovable[i]!;
+      if (usedTokens + block.tokenCount <= availableTokens) {
+        keptRemovable.unshift(block);
+        usedTokens += block.tokenCount;
+      } else {
+        break;
+      }
     }
+
+    selectedBlocks = [...systemBlocks, ...keptRemovable, ...protectedBlocks];
   }
 
-  // Combine: system messages + kept removable + protected
-  const allMessages = [...systemMessages, ...keptRemovable, ...protectedMessages];
-
-  // Sort by original position then renumber
-  allMessages.sort((a, b) => a.position - b.position);
-
+  const allMessages = collectMessagesFromBlocks(selectedBlocks);
   const renumbered = allMessages.map((message, index) =>
     cloneMessageWithPosition(message, index, copyContent(message.content)),
   );
@@ -213,6 +323,7 @@ export function truncateToTokenLimit(
 /**
  * Returns the last N messages from the conversation.
  * By default excludes system messages and hidden messages.
+ * Tool interactions are preserved as atomic blocks by default.
  */
 export function getRecentMessages(
   conversation: Conversation,
@@ -220,10 +331,12 @@ export function getRecentMessages(
   options?: {
     includeHidden?: boolean;
     includeSystem?: boolean;
+    preserveToolPairs?: boolean;
   },
 ): ReadonlyArray<Message> {
   const includeHidden = options?.includeHidden ?? false;
   const includeSystem = options?.includeSystem ?? false;
+  const preserveToolPairs = options?.preserveToolPairs ?? true;
 
   const filtered = getOrderedMessages(conversation).filter((m) => {
     if (!includeHidden && m.hidden) return false;
@@ -231,32 +344,44 @@ export function getRecentMessages(
     return true;
   });
 
-  return filtered.slice(-count);
+  if (!preserveToolPairs) {
+    return filtered.slice(-count);
+  }
+
+  const { messageToBlock } = buildMessageBlocks(filtered, () => 0, preserveToolPairs);
+  const tail = filtered.slice(-count);
+  const blocks = collectBlocksForMessages(tail, messageToBlock);
+  return collectMessagesFromBlocks(blocks);
 }
 
 /**
  * Truncates conversation to keep only messages from the specified position onwards.
  * Optionally preserves system messages regardless of position.
+ * Tool interactions are preserved as atomic blocks by default.
  */
 export function truncateFromPosition(
   conversation: Conversation,
   position: number,
   options?: {
     preserveSystemMessages?: boolean;
+    preserveToolPairs?: boolean;
   },
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   const preserveSystem = options?.preserveSystemMessages ?? true;
+  const preserveToolPairs = options?.preserveToolPairs ?? true;
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
 
   const ordered = getOrderedMessages(conversation);
+  const { messageToBlock } = buildMessageBlocks(ordered, () => 0, preserveToolPairs);
   const systemMessages = preserveSystem
     ? ordered.filter((m) => m.role === 'system' && m.position < position)
     : [];
-
   const keptMessages = ordered.filter((m) => m.position >= position);
-  const allMessages = [...systemMessages, ...keptMessages];
+  const systemBlocks = collectBlocksForMessages(systemMessages, messageToBlock);
+  const keptBlocks = collectBlocksForMessages(keptMessages, messageToBlock);
+  const allMessages = collectMessagesFromBlocks([...systemBlocks, ...keptBlocks]);
 
   // Renumber positions
   const renumbered = allMessages.map((message, index) =>

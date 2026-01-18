@@ -148,6 +148,56 @@ conversation = appendMessages(
 );
 ```
 
+Tool payloads are typed as `JSONValue` to keep conversations JSON-serializable.
+
+You can also use tool-specific helpers to reduce agent-loop glue code:
+
+```ts
+import {
+  appendToolResult,
+  appendToolUse,
+  getPendingToolCalls,
+  getToolInteractions,
+} from 'conversationalist';
+
+conversation = appendToolUse(conversation, {
+  id: 'call_123',
+  name: 'getWeather',
+  arguments: { city: 'NYC' },
+});
+
+conversation = appendToolResult(conversation, {
+  callId: 'call_123',
+  outcome: 'success',
+  content: { tempF: 72, condition: 'sunny' },
+});
+
+const pending = getPendingToolCalls(conversation);
+const interactions = getToolInteractions(conversation);
+```
+
+### Correctness Guarantees / Invariants
+
+Conversationalist maintains several invariants when you use its APIs:
+
+- `conversation.ids` and `conversation.messages` stay in sync.
+- Every `tool-result` references an earlier `tool-use`.
+- `toolCall.id` values are unique per conversation.
+
+Use the integrity helpers when importing or mutating external data:
+
+```ts
+import {
+  assertConversationIntegrity,
+  validateConversationIntegrity,
+} from 'conversationalist';
+
+const issues = validateConversationIntegrity(conversation);
+// issues: IntegrityIssue[]
+
+assertConversationIntegrity(conversation);
+```
+
 ### Streaming
 
 Streaming helpers let you append a placeholder, update it as chunks arrive, and finalize
@@ -183,8 +233,15 @@ import { simpleTokenEstimator, truncateToTokenLimit } from 'conversationalist';
 conversation = truncateToTokenLimit(conversation, 4000, {
   preserveSystemMessages: true,
   preserveLastN: 2,
+  preserveToolPairs: true, // default
 });
 ```
+
+By default, truncation and recent-message helpers treat a `tool-use` + `tool-result`
+as an atomic block (`preserveToolPairs: true`) so tool results are never stranded.
+If a tool block doesn't fit inside the budget, both messages are dropped. Set
+`preserveToolPairs: false` to revert to message-level truncation.
+This may return more than `count` messages when a recent tool result needs its call.
 
 #### Custom Token Counters
 
@@ -605,25 +662,21 @@ const restoredWithEnv = ConversationHistory.from(snapshot, {
 
 ### Schema Versioning
 
-Conversations include a `schemaVersion` field for forward compatibility. When loading older data, use `migrateConversation` to upgrade it to the current schema:
+Conversations include a `schemaVersion` field for forward compatibility. Deserialization expects the current schema version; migrate legacy data before calling `deserializeConversation`.
 
 ```ts
 import { deserializeConversation } from 'conversationalist';
-import {
-  migrateConversation,
-  CURRENT_SCHEMA_VERSION,
-} from 'conversationalist/versioning';
+import { CURRENT_SCHEMA_VERSION } from 'conversationalist/versioning';
 
-// Old data without schemaVersion
-const legacyData = JSON.parse(oldStorage);
-const migrated = migrateConversation(legacyData);
-// migrated.schemaVersion === CURRENT_SCHEMA_VERSION
-
-const conversation = deserializeConversation(migrated);
+const conversation = deserializeConversation(JSON.parse(storage));
 ```
 
 Conversations are already JSON-serializable; persist them directly and apply utilities
 like `stripTransientMetadata` or `redactMessageAtPosition` when you need to sanitize data.
+
+`redactMessageAtPosition` preserves tool linkage by default (call IDs and outcomes stay intact),
+and supports `redactToolArguments`, `redactToolResults`, or `clearToolMetadata` for stricter
+scrubbing.
 
 ### Transient Metadata Convention
 
@@ -909,12 +962,14 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 | Category         | Key Functions                                                                                                                                                                                                               |
 | :--------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Creation**     | `createConversation`, `deserializeConversation`                                                                                                                                                                             |
-| **Appending**    | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendMessages`                                                                                                                                      |
+| **Appending**    | `appendUserMessage`, `appendAssistantMessage`, `appendSystemMessage`, `appendToolUse`, `appendToolResult`, `appendMessages`                                                                                                 |
 | **Streaming**    | `appendStreamingMessage`, `updateStreamingMessage`, `finalizeStreamingMessage`, `cancelStreamingMessage`                                                                                                                    |
 | **Modification** | `redactMessageAtPosition`, `replaceSystemMessage`, `collapseSystemMessages`                                                                                                                                                 |
-| **Context**      | `truncateToTokenLimit`, `getRecentMessages`, `estimateConversationTokens`                                                                                                                                                   |
+| **Context**      | `truncateToTokenLimit`, `truncateFromPosition`, `getRecentMessages`, `estimateConversationTokens`                                                                                                                           |
 | **Querying**     | `getMessages`, `getMessageIds`, `getMessageById`, `getStatistics`                                                                                                                                                           |
-| **Conversion**   | `toChatMessages`, `pairToolCallsWithResults`                                                                                                                                                                                |
+| **Conversion**   | `toChatMessages`                                                                                                                                                                                                            |
+| **Tooling**      | `getPendingToolCalls`, `getToolInteractions`, `pairToolCallsWithResults`                                                                                                                                                    |
+| **Integrity**    | `validateConversationIntegrity`, `assertConversationIntegrity`                                                                                                                                                              |
 | **Markdown**     | `toMarkdown`, `fromMarkdown`, `conversationHistoryToMarkdown`, `conversationHistoryFromMarkdown` (from `conversationalist/markdown`)                                                                                        |
 | **Export**       | `exportMarkdown`, `normalizeLineEndings` (from `conversationalist/export`)                                                                                                                                                  |
 | **Schemas**      | `conversationSchema`, `messageSchema`, `messageInputSchema`, `messageRoleSchema`, `multiModalContentSchema`, `jsonValueSchema`, `toolCallSchema`, `toolResultSchema`, `tokenUsageSchema` (from `conversationalist/schemas`) |
@@ -922,7 +977,7 @@ Svelte 5's runes pair perfectly with **Conversationalist**. You can use the `Con
 | **Role Labels**  | `ROLE_LABELS`, `LABEL_TO_ROLE`, `getRoleLabel`, `getRoleFromLabel` (from `conversationalist/markdown`)                                                                                                                      |
 | **Transient**    | `isTransientKey`, `stripTransientFromRecord`, `stripTransientMetadata`                                                                                                                                                      |
 | **Redaction**    | `redactPii`, `createPIIRedactionPlugin`, `createPIIRedaction`, `DEFAULT_PII_RULES` (from `conversationalist/redaction`)                                                                                                     |
-| **Versioning**   | `migrateConversation`, `CURRENT_SCHEMA_VERSION` (from `conversationalist/versioning`)                                                                                                                                       |
+| **Versioning**   | `CURRENT_SCHEMA_VERSION` (from `conversationalist/versioning`)                                                                                                                                                              |
 | **Sort**         | `sortObjectKeys`, `sortMessagesByPosition` (from `conversationalist/sort`)                                                                                                                                                  |
 | **History**      | `ConversationHistory`                                                                                                                                                                                                       |
 
