@@ -40,6 +40,20 @@ describe('integrity', () => {
     expect(issues.some((issue) => issue.code === 'integrity:missing-message')).toBe(true);
   });
 
+  it('reports duplicate message ids in ids', () => {
+    const message = createMessage({ id: 'dup' });
+    const conv: Conversation = {
+      ...baseConversation(),
+      ids: [message.id, message.id],
+      messages: { [message.id]: message },
+    };
+
+    const issues = validateConversationIntegrity(conv);
+    expect(
+      issues.some((issue) => issue.code === 'integrity:duplicate-message-id'),
+    ).toBe(true);
+  });
+
   it('reports messages not listed in ids', () => {
     const message = createMessage({ id: 'm1' });
     const conv: Conversation = {

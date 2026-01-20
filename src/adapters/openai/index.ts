@@ -208,9 +208,6 @@ function convertMessage(message: Message): OpenAIMessage | null {
     case 'snapshot':
       // Snapshots are internal state, not sent to API
       return null;
-
-    default:
-      return null;
   }
 }
 

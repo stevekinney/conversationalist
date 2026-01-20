@@ -34,6 +34,23 @@ describe('schemas', () => {
     expect(jsonValueSchema.safeParse(Number.POSITIVE_INFINITY).success).toBeFalse();
   });
 
+  test('jsonValueSchema rejects non-plain objects', () => {
+    const value = Object.create({}) as Record<string, unknown>;
+    value.name = 'test';
+    const result = jsonValueSchema.safeParse(value);
+    expect(result.success).toBeFalse();
+    if (!result.success) {
+      const messages = result.error.issues.flatMap((issue) => {
+        if (issue.code === 'invalid_union') {
+          const errors = (issue as { errors: Array<Array<{ message: string }>> }).errors;
+          return errors.flat().map((nested) => nested.message);
+        }
+        return issue.message;
+      });
+      expect(messages).toContain('expected a plain object');
+    }
+  });
+
   test('messageSchema basic shape', () => {
     const m = {
       id: 'id',

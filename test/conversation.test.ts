@@ -89,6 +89,16 @@ describe('conversation (functional)', () => {
     expect(toolResult.toolResult?.content).toBe('[MASKED]');
   });
 
+  test('redaction accepts an environment argument for timestamps', () => {
+    const env = { now: () => '2024-02-02T00:00:00.000Z' };
+    let c = createConversation();
+    c = appendUserMessage(c, 'secret');
+
+    const redacted = redactMessageAtPosition(c, 0, env);
+    expect(getOrderedMessages(redacted)[0]!.content).toBe('[REDACTED]');
+    expect(redacted.updatedAt).toBe('2024-02-02T00:00:00.000Z');
+  });
+
   test('redaction can clear tool metadata when requested', () => {
     let c = createConversation();
     c = appendMessages(c, {
@@ -167,6 +177,16 @@ describe('conversation (functional)', () => {
     expect(() => redactMessageAtPosition(c, 0)).toThrow(ConversationalistError);
   });
 
+  test('redact throws when the message id is missing', () => {
+    const base = createConversation();
+    const broken: Conversation = {
+      ...base,
+      ids: ['missing'],
+      messages: {},
+    };
+    expect(() => redactMessageAtPosition(broken, 0)).toThrow(ConversationalistError);
+  });
+
   test('deserialize validation: position contiguity and tool references', () => {
     const now = new Date().toISOString();
     // Position mismatch
@@ -217,6 +237,51 @@ describe('conversation (functional)', () => {
     expect(() => deserializeConversation(badTool as any)).toThrow(ConversationalistError);
   });
 
+  test('deserialize rejects invalid schema data', () => {
+    expect(() => deserializeConversation({} as any)).toThrow(ConversationalistError);
+  });
+
+  test('deserialize rejects missing messages and unlisted messages', () => {
+    const now = new Date().toISOString();
+    const missingMessage = {
+      schemaVersion: 1,
+      id: 'c3',
+      status: 'active' as const,
+      metadata: {},
+      ids: ['missing'],
+      messages: {},
+      createdAt: now,
+      updatedAt: now,
+    };
+    expect(() => deserializeConversation(missingMessage as any)).toThrow(
+      ConversationalistError,
+    );
+
+    const unlistedMessage = {
+      schemaVersion: 1,
+      id: 'c4',
+      status: 'active' as const,
+      metadata: {},
+      ids: [],
+      messages: {
+        m1: {
+          id: 'm1',
+          role: 'user',
+          content: 'x',
+          position: 0,
+          createdAt: now,
+          metadata: {},
+          hidden: false,
+        },
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+    expect(() => deserializeConversation(unlistedMessage as any)).toThrow(
+      ConversationalistError,
+    );
+  });
+
   test('deserialize handles conversation input with metadata', () => {
     let c = createConversation({
       title: 'T',
@@ -254,6 +319,25 @@ describe('conversation (functional)', () => {
       },
     );
     expect(c.ids.length).toBe(2);
+  });
+
+  test('appendMessages rejects duplicate tool call ids', () => {
+    const c = createConversation();
+    expect(() =>
+      appendMessages(
+        c,
+        {
+          role: 'tool-use',
+          content: '',
+          toolCall: { id: 'dup', name: 'tool', arguments: {} },
+        },
+        {
+          role: 'tool-use',
+          content: '',
+          toolCall: { id: 'dup', name: 'tool', arguments: {} },
+        },
+      ),
+    ).toThrow(ConversationalistError);
   });
 
   test('append tool referencing prior tool-use in existing conversation', () => {

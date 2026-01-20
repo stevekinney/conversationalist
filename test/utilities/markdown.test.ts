@@ -635,6 +635,20 @@ Content`;
       );
     });
 
+    test('throws MarkdownParseError for invalid frontmatter YAML', () => {
+      const markdown = `---
+id: [unclosed
+status: active
+metadata: {}
+createdAt: '2024-01-15T10:00:00.000Z'
+updatedAt: '2024-01-15T10:00:00.000Z'
+messages: {}
+---`;
+
+      expect(() => fromMarkdown(markdown)).toThrow(MarkdownParseError);
+      expect(() => fromMarkdown(markdown)).toThrow('Invalid frontmatter');
+    });
+
     test('throws MarkdownParseError for unknown role', () => {
       const markdown = `---
 id: conv-1
@@ -674,6 +688,33 @@ Content`;
 
       expect(() => fromMarkdown(markdown)).toThrow(MarkdownParseError);
       expect(() => fromMarkdown(markdown)).toThrow('Missing metadata for message: msg-1');
+    });
+
+    test('throws MarkdownParseError for invalid tool linkage', () => {
+      const markdown = `---
+id: conv-1
+status: active
+metadata: {}
+createdAt: '2024-01-15T10:00:00.000Z'
+updatedAt: '2024-01-15T10:00:00.000Z'
+messages:
+  msg-1:
+    position: 0
+    createdAt: '2024-01-15T10:00:00.000Z'
+    metadata: {}
+    hidden: false
+    toolResult:
+      callId: call-1
+      outcome: success
+      content: {}
+---
+
+### Tool Result (msg-1)
+
+Tool output`;
+
+      expect(() => fromMarkdown(markdown)).toThrow(MarkdownParseError);
+      expect(() => fromMarkdown(markdown)).toThrow('Invalid markdown conversation');
     });
 
     test('parses conversation with no messages', () => {

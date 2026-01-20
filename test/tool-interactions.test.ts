@@ -56,6 +56,23 @@ describe('tool interaction helpers', () => {
     expect(pending[0]?.id).toBe('call-1');
   });
 
+  it('returns no pending calls after results are recorded', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendToolUse(conv, {
+      toolId: 'tool',
+      callId: 'call-1',
+      args: { input: 'value' },
+    });
+    conv = appendToolResult(conv, {
+      callId: 'call-1',
+      outcome: 'success',
+      result: { ok: true },
+    });
+
+    const pending = getPendingToolCalls(conv);
+    expect(pending).toHaveLength(0);
+  });
+
   it('pairs tool calls with results', () => {
     let conv = createConversation({ id: 'test' }, testEnvironment);
     conv = appendToolUse(conv, {

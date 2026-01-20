@@ -7,7 +7,12 @@ import {
   truncateFromPosition,
   truncateToTokenLimit,
 } from '../src/context';
-import { appendMessages, createConversation } from '../src/conversation/index';
+import {
+  appendMessages,
+  appendUnsafeMessage,
+  createConversation,
+  createConversationUnsafe,
+} from '../src/conversation/index';
 import { isConversationEnvironmentParameter } from '../src/environment';
 import type { Conversation, Message } from '../src/types';
 import { createMessage } from '../src/utilities';
@@ -105,6 +110,44 @@ describe('getRecentMessages', () => {
     const recent = getRecentMessages(conv, 1);
     expect(recent.some((m) => m.role === 'tool-use')).toBe(true);
     expect(recent.some((m) => m.role === 'tool-result')).toBe(true);
+  });
+
+  it('drops orphan tool results when preserving tool pairs', () => {
+    let conv = createConversationUnsafe({ id: 'test' }, testEnvironment);
+    conv = appendUnsafeMessage(
+      conv,
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'missing', outcome: 'success', content: 'ok' },
+      },
+      testEnvironment,
+    );
+
+    const recent = getRecentMessages(conv, 1, { preserveToolPairs: true });
+    expect(recent).toHaveLength(0);
+  });
+
+  it('returns a simple slice when preserveToolPairs is false', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(
+      conv,
+      {
+        role: 'tool-use',
+        content: '',
+        toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+      },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+      },
+      testEnvironment,
+    );
+
+    const recent = getRecentMessages(conv, 1, { preserveToolPairs: false });
+    expect(recent).toHaveLength(1);
+    expect(recent[0]?.role).toBe('tool-result');
   });
 });
 

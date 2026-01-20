@@ -480,6 +480,41 @@ describe('ConversationHistory', () => {
       expect(history.env.randomId()).toBe('custom-id');
     });
 
+    it('removes event listeners with options', () => {
+      const history = new ConversationHistory(createConversation());
+      let calls = 0;
+      const handler = () => {
+        calls += 1;
+      };
+
+      history.addEventListener('change', handler, { capture: true });
+      history.removeEventListener('change', handler, { capture: true });
+
+      history.dispatchEvent({
+        type: 'change',
+        detail: { type: 'push', conversation: history.current },
+      } as any);
+
+      expect(calls).toBe(0);
+    });
+
+    it('dispatches events through the internal target', () => {
+      const history = new ConversationHistory(createConversation());
+      let seen = false;
+      history.addEventListener('change', (event) => {
+        if (event.detail.type === 'push') {
+          seen = true;
+        }
+      });
+
+      history.dispatchEvent({
+        type: 'change',
+        detail: { type: 'push', conversation: history.current },
+      } as any);
+
+      expect(seen).toBe(true);
+    });
+
     it('should handle null callback in addEventListener', () => {
       const history = new ConversationHistory();
       const result = history.addEventListener('change', null);

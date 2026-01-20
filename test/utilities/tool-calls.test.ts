@@ -133,4 +133,24 @@ describe('tool call pairing', () => {
     const pairs = pairToolCallsWithResults(messages);
     expect(pairs.map((p) => p.call.name)).toEqual(['first', 'second', 'third']);
   });
+
+  test('accepts message records and orders by position', () => {
+    const messages: Record<string, Message> = {
+      a: createMessage({
+        id: 'a',
+        role: 'tool-use',
+        position: 1,
+        toolCall: { id: 'call-1', name: 'alpha', arguments: {} },
+      }),
+      b: createMessage({
+        id: 'b',
+        role: 'tool-use',
+        position: 0,
+        toolCall: { id: 'call-2', name: 'beta', arguments: {} },
+      }),
+    };
+
+    const pairs = pairToolCallsWithResults(messages);
+    expect(pairs.map((pair) => pair.call.name)).toEqual(['beta', 'alpha']);
+  });
 });

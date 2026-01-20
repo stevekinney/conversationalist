@@ -167,6 +167,36 @@ describe('OpenAI Adapter', () => {
       });
     });
 
+    it('collapses single text parts into a string', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: [{ type: 'text', text: 'Solo' }] },
+        testEnvironment,
+      );
+
+      const messages = toOpenAIMessages(conv);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.content).toBe('Solo');
+    });
+
+    it('returns empty string for text-only conversion with no parts', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        {
+          role: 'assistant',
+          content: [{ type: 'image', url: 'https://example.com/only-image.png' }],
+        },
+        testEnvironment,
+      );
+
+      const messages = toOpenAIMessages(conv);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.role).toBe('assistant');
+      expect(messages[0]?.content).toBe('');
+    });
+
     it('skips hidden messages', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
       conv = appendMessages(
@@ -626,6 +656,41 @@ describe('Anthropic Adapter', () => {
       expect(toolUse.input).toEqual({ key: 'value' });
     });
 
+    it('skips tool-use messages without toolCall', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: 'Hello' },
+        { role: 'tool-use', content: '' },
+        testEnvironment,
+      );
+
+      const { messages } = toAnthropicMessages(conv);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.role).toBe('user');
+    });
+
+    it('falls back to raw arguments for invalid JSON tool calls', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: 'Do something' },
+        {
+          role: 'tool-use',
+          content: '',
+          toolCall: { id: 'call-1', name: 'tool', arguments: '{invalid' },
+        },
+        testEnvironment,
+      );
+
+      const { messages } = toAnthropicMessages(conv);
+      const assistantMsg = messages.find((m) => m.role === 'assistant');
+      const toolUse = (assistantMsg?.content as any[]).find(
+        (b: any) => b.type === 'tool_use',
+      );
+      expect(toolUse.input).toBe('{invalid');
+    });
+
     it('handles data URLs with missing parts', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
       conv = appendMessages(
@@ -790,6 +855,24 @@ describe('Gemini Adapter', () => {
       expect(parts[0].fileData.mimeType).toBe('image/jpeg');
     });
 
+    it('falls back to default mimeType when extension is unknown', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        {
+          role: 'user',
+          content: [{ type: 'image', url: 'http://localhost/image' }],
+        },
+        testEnvironment,
+      );
+
+      const { contents } = toGeminiMessages(conv);
+      const parts = contents[0]?.parts as any[];
+
+      expect(parts[0].fileData).toBeDefined();
+      expect(parts[0].fileData.mimeType).toBe('application/octet-stream');
+    });
+
     it('handles tool call with invalid JSON arguments', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
       conv = appendMessages(
@@ -811,6 +894,43 @@ describe('Gemini Adapter', () => {
         (p: any) => 'functionCall' in p,
       ) as any;
       expect(functionCallPart.functionCall.args).toEqual({ _raw: 'invalid json {' });
+    });
+
+    it('skips tool-use messages without toolCall', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: 'Hello' },
+        { role: 'tool-use', content: '' },
+        testEnvironment,
+      );
+
+      const { contents } = toGeminiMessages(conv);
+      expect(contents).toHaveLength(1);
+      expect(contents[0]?.role).toBe('user');
+    });
+
+    it('wraps non-object parsed arguments in _value', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: 'Do something' },
+        {
+          role: 'tool-use',
+          content: '',
+          toolCall: { id: 'call-1', name: 'tool', arguments: 'true' },
+        },
+        testEnvironment,
+      );
+
+      const { contents } = toGeminiMessages(conv);
+      const modelContent = contents.find(
+        (c) => c.role === 'model' && c.parts.some((p: any) => 'functionCall' in p),
+      );
+      const functionCallPart = modelContent?.parts.find(
+        (p: any) => 'functionCall' in p,
+      ) as any;
+      expect(functionCallPart.functionCall.args).toEqual({ _value: true });
     });
 
     it('handles tool call with object arguments', () => {
@@ -836,6 +956,29 @@ describe('Gemini Adapter', () => {
       expect(functionCallPart.functionCall.args).toEqual({ key: 'value' });
     });
 
+    it('wraps non-object arguments in _value', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: 'Do something' },
+        {
+          role: 'tool-use',
+          content: '',
+          toolCall: { id: 'call-1', name: 'tool', arguments: 42 },
+        },
+        testEnvironment,
+      );
+
+      const { contents } = toGeminiMessages(conv);
+      const modelContent = contents.find(
+        (c) => c.role === 'model' && c.parts.some((p: any) => 'functionCall' in p),
+      );
+      const functionCallPart = modelContent?.parts.find(
+        (p: any) => 'functionCall' in p,
+      ) as any;
+      expect(functionCallPart.functionCall.args).toEqual({ _value: 42 });
+    });
+
     it('handles system message with empty content', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
       conv = appendMessages(
@@ -849,6 +992,34 @@ describe('Gemini Adapter', () => {
       // Empty system message results in no systemInstruction
       expect(systemInstruction).toBeUndefined();
       expect(contents).toHaveLength(1);
+    });
+
+    it('wraps non-object tool results', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: 'Do something' },
+        {
+          role: 'tool-use',
+          content: '',
+          toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+        },
+        testEnvironment,
+      );
+
+      const { contents } = toGeminiMessages(conv);
+      const userContent = contents.find(
+        (c) => c.role === 'user' && c.parts.some((p: any) => 'functionResponse' in p),
+      );
+      const responsePart = userContent?.parts.find(
+        (p: any) => 'functionResponse' in p,
+      ) as any;
+      expect(responsePart.functionResponse.response).toEqual({ result: 'ok' });
     });
 
     it('rejects tool results without matching tool calls', () => {

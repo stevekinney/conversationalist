@@ -38,16 +38,19 @@ function toMultiModalContent(value: RawMultiModalContent): MultiModalContent {
  * Zod schema for JSON-serializable values.
  */
 export const jsonValueSchema: z.ZodType<JSONValue> = z.lazy(() => {
-  const jsonObjectSchema = z
-    .record(z.string(), jsonValueSchema)
-    .superRefine((value, ctx) => {
+  const jsonObjectSchema = z.preprocess(
+    (value, ctx) => {
       if (!isPlainObject(value)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: 'expected a plain object',
         });
+        return z.NEVER;
       }
-    });
+      return value;
+    },
+    z.record(z.string(), jsonValueSchema),
+  );
 
   return z.union([
     z.string(),

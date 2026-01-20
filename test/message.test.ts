@@ -30,6 +30,22 @@ describe('message helpers', () => {
     expect(json.content).toBe('hello');
   });
 
+  test('messageToJSON preserves assistant-only fields', () => {
+    const msg = createMessage({
+      id: 'assistant',
+      role: 'assistant',
+      content: 'Done',
+      position: 0,
+      createdAt: new Date().toISOString(),
+      metadata: {},
+      hidden: false,
+      goalCompleted: true,
+    });
+    const json = messageToJSON(msg);
+    expect(json.role).toBe('assistant');
+    expect((json as any).goalCompleted).toBe(true);
+  });
+
   test('parts/text/hasImages/toString with multimodal content', () => {
     const now = new Date().toISOString();
     const message: Message = {

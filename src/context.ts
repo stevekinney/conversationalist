@@ -173,13 +173,12 @@ const ensureTruncationSafe = (
       !preserveToolPairs &&
       error instanceof ConversationalistError &&
       error.code === 'error:integrity'
-    ) {
+    )
       throw createIntegrityError(
         `${operation} produced invalid tool linkage; use preserveToolPairs: true to keep tool interactions intact`,
         { preserveToolPairs, issues: error.context?.['issues'] },
       );
-    }
-
+    /* v8 ignore next */
     throw error;
   }
 };

@@ -140,6 +140,36 @@ describe('updateStreamingMessage', () => {
 
     expect(Array.isArray(getOrderedMessages(updated)[0]?.content)).toBe(true);
   });
+
+  it('preserves token usage when updating content', () => {
+    const conv = createConversation({ id: 'test' }, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
+
+    const finalized = finalizeStreamingMessage(
+      conversation,
+      messageId,
+      { tokenUsage: { prompt: 1, completion: 2, total: 3 } },
+      testEnvironment,
+    );
+
+    const updated = updateStreamingMessage(
+      finalized,
+      messageId,
+      'Updated',
+      testEnvironment,
+    );
+
+    expect(getOrderedMessages(updated)[0]?.tokenUsage).toEqual({
+      prompt: 1,
+      completion: 2,
+      total: 3,
+    });
+  });
 });
 
 describe('finalizeStreamingMessage', () => {
@@ -263,6 +293,33 @@ describe('cancelStreamingMessage', () => {
     getOrderedMessages(cancelled).forEach((m, i) => {
       expect(m.position).toBe(i);
     });
+  });
+
+  it('preserves token usage when renumbering', async () => {
+    const { appendMessages } = await import('../src/conversation/index');
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
+
+    const withTokenUsage = appendMessages(
+      conversation,
+      {
+        role: 'assistant',
+        content: 'Done',
+        tokenUsage: { prompt: 1, completion: 2, total: 3 },
+      },
+      testEnvironment,
+    );
+
+    const cancelled = cancelStreamingMessage(withTokenUsage, messageId, testEnvironment);
+    const [remaining] = getOrderedMessages(cancelled);
+    expect(remaining?.tokenUsage).toEqual({ prompt: 1, completion: 2, total: 3 });
+    expect(remaining?.position).toBe(0);
   });
 
   it('returns unchanged conversation for unknown message ID', () => {
