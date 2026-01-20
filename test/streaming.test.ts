@@ -297,7 +297,7 @@ describe('cancelStreamingMessage', () => {
 
   it('preserves token usage when renumbering', async () => {
     const { appendMessages } = await import('../src/conversation/index');
-    let conv = createConversation({ id: 'test' }, testEnvironment);
+    const conv = createConversation({ id: 'test' }, testEnvironment);
 
     const { conversation, messageId } = appendStreamingMessage(
       conv,
