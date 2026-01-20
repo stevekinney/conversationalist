@@ -134,9 +134,7 @@ describe('deterministic utilities', () => {
     });
 
     test('handles single element array', () => {
-      const messages = [
-        { id: 'a', position: 0, createdAt: '2024-01-15T10:00:00.000Z' },
-      ];
+      const messages = [{ id: 'a', position: 0, createdAt: '2024-01-15T10:00:00.000Z' }];
 
       const result = sortMessagesByPosition(messages);
 

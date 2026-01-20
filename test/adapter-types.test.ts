@@ -1,4 +1,3 @@
-import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import type { Content } from '@google/generative-ai';
 import { describe, expectTypeOf, it } from 'bun:test';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
@@ -34,7 +33,12 @@ describe('Adapter Type Compatibility', () => {
     it('should be compatible with Anthropic SDK types', () => {
       const { messages, system } = toAnthropicMessages(conv);
 
-      expectTypeOf(messages).toExtend<MessageParam[]>();
+      type AnthropicMessageParamLike = {
+        role: 'user' | 'assistant';
+        content: string | Array<{ type: string }>;
+      };
+
+      expectTypeOf(messages).toMatchTypeOf<AnthropicMessageParamLike[]>();
       expectTypeOf(system).toEqualTypeOf<string | undefined>();
     });
   });

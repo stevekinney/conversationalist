@@ -125,15 +125,29 @@ describe('OpenAI Adapter', () => {
       // Tool call message
       const toolCallMsg = messages[1];
       expect(toolCallMsg?.role).toBe('assistant');
-      expect(toolCallMsg?.content).toBeNull();
-      expect(toolCallMsg?.tool_calls).toHaveLength(1);
-      expect(toolCallMsg?.tool_calls?.[0]?.id).toBe('call-123');
-      expect(toolCallMsg?.tool_calls?.[0]?.function.name).toBe('get_weather');
+      if (
+        !toolCallMsg ||
+        toolCallMsg.role !== 'assistant' ||
+        !('tool_calls' in toolCallMsg)
+      ) {
+        throw new Error('Expected tool call message with tool_calls');
+      }
+      expect(toolCallMsg.content).toBeNull();
+      expect(toolCallMsg.tool_calls).toHaveLength(1);
+      expect(toolCallMsg.tool_calls?.[0]?.id).toBe('call-123');
+      expect(toolCallMsg.tool_calls?.[0]?.function.name).toBe('get_weather');
 
       // Tool result message
       const toolResultMsg = messages[2];
       expect(toolResultMsg?.role).toBe('tool');
-      expect(toolResultMsg?.tool_call_id).toBe('call-123');
+      if (
+        !toolResultMsg ||
+        toolResultMsg.role !== 'tool' ||
+        !('tool_call_id' in toolResultMsg)
+      ) {
+        throw new Error('Expected tool result message with tool_call_id');
+      }
+      expect(toolResultMsg.tool_call_id).toBe('call-123');
     });
 
     it('converts multi-modal content', () => {
@@ -322,7 +336,15 @@ describe('OpenAI Adapter', () => {
 
       // Should be: user, assistant (with 2 tool_calls)
       expect(messages).toHaveLength(2);
-      expect(messages[1]?.tool_calls).toHaveLength(2);
+      const groupedToolCalls = messages[1];
+      if (
+        !groupedToolCalls ||
+        groupedToolCalls.role !== 'assistant' ||
+        !('tool_calls' in groupedToolCalls)
+      ) {
+        throw new Error('Expected grouped tool calls');
+      }
+      expect(groupedToolCalls.tool_calls).toHaveLength(2);
     });
 
     it('flushes pending tool calls before different message type', () => {
@@ -348,8 +370,16 @@ describe('OpenAI Adapter', () => {
 
       // Should be: user, assistant (with tool_calls), tool, assistant
       expect(messages).toHaveLength(4);
-      expect(messages[1]?.role).toBe('assistant');
-      expect(messages[1]?.tool_calls).toHaveLength(1);
+      const groupedToolCall = messages[1];
+      expect(groupedToolCall?.role).toBe('assistant');
+      if (
+        !groupedToolCall ||
+        groupedToolCall.role !== 'assistant' ||
+        !('tool_calls' in groupedToolCall)
+      ) {
+        throw new Error('Expected grouped tool call');
+      }
+      expect(groupedToolCall.tool_calls).toHaveLength(1);
     });
 
     it('skips hidden messages in grouped mode', () => {

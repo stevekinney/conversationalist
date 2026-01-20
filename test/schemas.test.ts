@@ -181,7 +181,7 @@ describe('Standard Schema compliance', () => {
     }
   });
 
-  test('~standard.validate returns success result for valid data', () => {
+  test('~standard.validate returns success result for valid data', async () => {
     const validConversation = {
       schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'conv-1',
@@ -193,14 +193,14 @@ describe('Standard Schema compliance', () => {
       updatedAt: new Date().toISOString(),
     };
 
-    const result = conversationSchema['~standard'].validate(validConversation);
+    const result = await conversationSchema['~standard'].validate(validConversation);
     expect(result).not.toHaveProperty('issues');
     expect(result).toHaveProperty('value');
   });
 
-  test('~standard.validate returns failure result for invalid data', () => {
+  test('~standard.validate returns failure result for invalid data', async () => {
     const invalidData = { invalid: true };
-    const result = conversationSchema['~standard'].validate(invalidData);
+    const result = await conversationSchema['~standard'].validate(invalidData);
     expect(result).toHaveProperty('issues');
     expect(Array.isArray(result.issues)).toBe(true);
   });

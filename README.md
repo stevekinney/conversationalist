@@ -256,8 +256,10 @@ conversation = truncateToTokenLimit(conversation, 4000, {
 By default, truncation and recent-message helpers treat a `tool-use` + `tool-result`
 as an atomic block (`preserveToolPairs: true`) so tool results are never stranded.
 If a tool block doesn't fit inside the budget, both messages are dropped. Set
-`preserveToolPairs: false` to revert to message-level truncation.
-This may return more than `count` messages when a recent tool result needs its call.
+`preserveToolPairs: false` to revert to message-level truncation. When disabled,
+truncation can strand tool results; Conversationalist throws an integrity error
+instead of returning invalid history. For agent loops, keep
+`preserveToolPairs: true` to preserve tool interactions.
 
 #### Custom Token Counters
 

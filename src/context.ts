@@ -1,12 +1,16 @@
 import type { MultiModalContent } from '@lasercat/homogenaize';
 
-import { assertConversationSafe } from './conversation/validation';
+import {
+  assertConversationSafe,
+  ensureConversationSafe,
+} from './conversation/validation';
 import {
   type ConversationEnvironment,
   isConversationEnvironmentParameter,
   resolveConversationEnvironment,
   simpleTokenEstimator,
 } from './environment';
+import { ConversationalistError, createIntegrityError } from './errors';
 import { copyContent } from './multi-modal';
 import type { AssistantMessage, Conversation, Message, TokenEstimator } from './types';
 import { createMessage, isAssistantMessage, toReadonly } from './utilities';
@@ -155,6 +159,29 @@ const collectMessagesFromBlocks = (blocks: ReadonlyArray<MessageBlock>): Message
 
   messages.sort((a, b) => a.position - b.position);
   return messages;
+};
+
+const ensureTruncationSafe = (
+  conversation: Conversation,
+  preserveToolPairs: boolean,
+  operation: 'truncateToTokenLimit' | 'truncateFromPosition',
+): Conversation => {
+  try {
+    return ensureConversationSafe(conversation);
+  } catch (error) {
+    if (
+      !preserveToolPairs &&
+      error instanceof ConversationalistError &&
+      error.code === 'error:integrity'
+    ) {
+      throw createIntegrityError(
+        `${operation} produced invalid tool linkage; use preserveToolPairs: true to keep tool interactions intact`,
+        { preserveToolPairs, issues: error.context?.['issues'] },
+      );
+    }
+
+    throw error;
+  }
 };
 
 /**
@@ -314,12 +341,13 @@ export function truncateToTokenLimit(
     cloneMessageWithPosition(message, index, copyContent(message.content)),
   );
 
-  return toReadonly({
+  const next = toReadonly({
     ...conversation,
     ids: renumbered.map((message) => message.id),
     messages: toIdRecord(renumbered),
     updatedAt: now,
   });
+  return ensureTruncationSafe(next, preserveToolPairs, 'truncateToTokenLimit');
 }
 
 /**
@@ -391,10 +419,11 @@ export function truncateFromPosition(
     cloneMessageWithPosition(message, index, copyContent(message.content)),
   );
 
-  return toReadonly({
+  const next = toReadonly({
     ...conversation,
     ids: renumbered.map((message) => message.id),
     messages: toIdRecord(renumbered),
     updatedAt: now,
   });
+  return ensureTruncationSafe(next, preserveToolPairs, 'truncateFromPosition');
 }

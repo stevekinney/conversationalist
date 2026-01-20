@@ -16,9 +16,9 @@ const getOrderedMessages = (conversation: Conversation): Message[] =>
     .filter((message): message is Message => Boolean(message));
 
 describe('withConversation', () => {
-  test('chains mutating methods and returns immutable conversation', () => {
+  test('chains mutating methods and returns immutable conversation', async () => {
     const base = createConversation({ title: 'Chain' });
-    const result = withConversation(base, (c) => {
+    const result = await withConversation(base, (c) => {
       c.appendUserMessage('hi')
         .appendAssistantMessage('hello')
         .appendSystemMessage('note')
@@ -26,7 +26,6 @@ describe('withConversation', () => {
         .appendMessages({ role: 'user', content: 'final' });
     });
 
-    // Synchronous path returns Conversation
     expect(result.createdAt).toBeDefined();
     const messages = getOrderedMessages(result);
     expect(messages.length).toBe(4);
@@ -48,9 +47,9 @@ describe('withConversation', () => {
     expect(messages[0]!.role).toBe('user');
   });
 
-  test('exposes system message helpers on the draft', () => {
+  test('exposes system message helpers on the draft', async () => {
     const base = createConversation({ title: 'Systems' });
-    const result = withConversation(base, (c) => {
+    const result = await withConversation(base, (c) => {
       c.appendMessages(
         { role: 'system', content: 'First' },
         { role: 'system', content: 'Second' },
@@ -60,9 +59,7 @@ describe('withConversation', () => {
         .collapseSystemMessages();
     });
 
-    const systemMessages = getOrderedMessages(result).filter(
-      (m) => m.role === 'system',
-    );
+    const systemMessages = getOrderedMessages(result).filter((m) => m.role === 'system');
     expect(systemMessages.length).toBe(1);
     expect(systemMessages[0]!.content).toBe('Intro v2\nFirst\nSecond');
   });
@@ -86,11 +83,11 @@ describe('pipeConversation', () => {
 });
 
 describe('withConversation streaming support', () => {
-  test('appendStreamingMessage returns messageId and allows chaining', () => {
+  test('appendStreamingMessage returns messageId and allows chaining', async () => {
     const base = createConversation({ title: 'Streaming' });
     let capturedId: string | undefined;
 
-    const result = withConversation(base, (c) => {
+    const result = await withConversation(base, (c) => {
       const { draft, messageId } = c.appendStreamingMessage('assistant');
       capturedId = messageId;
       draft.updateStreamingMessage(messageId, 'Hello...');
@@ -103,10 +100,10 @@ describe('withConversation streaming support', () => {
     expect(isStreamingMessage(messages[0]!)).toBe(true);
   });
 
-  test('finalizeStreamingMessage removes streaming flag', () => {
+  test('finalizeStreamingMessage removes streaming flag', async () => {
     const base = createConversation({ title: 'Finalize' });
 
-    const result = withConversation(base, (c) => {
+    const result = await withConversation(base, (c) => {
       const { draft, messageId } = c.appendStreamingMessage('assistant');
       draft
         .updateStreamingMessage(messageId, 'Complete response')
@@ -122,10 +119,10 @@ describe('withConversation streaming support', () => {
     expect(messages[0]!.tokenUsage?.total).toBe(15);
   });
 
-  test('cancelStreamingMessage removes the message', () => {
+  test('cancelStreamingMessage removes the message', async () => {
     const base = createConversation({ title: 'Cancel' });
 
-    const result = withConversation(base, (c) => {
+    const result = await withConversation(base, (c) => {
       c.appendUserMessage('Hello');
       const { draft, messageId } = c.appendStreamingMessage('assistant');
       draft.cancelStreamingMessage(messageId);
@@ -138,10 +135,10 @@ describe('withConversation streaming support', () => {
 });
 
 describe('withConversation context window management', () => {
-  test('truncateFromPosition keeps messages from position onwards', () => {
+  test('truncateFromPosition keeps messages from position onwards', async () => {
     const base = createConversation({ title: 'Truncate' });
 
-    const result = withConversation(base, (c) => {
+    const result = await withConversation(base, (c) => {
       c.appendUserMessage('Message 0')
         .appendAssistantMessage('Message 1')
         .appendUserMessage('Message 2')
@@ -155,10 +152,10 @@ describe('withConversation context window management', () => {
     expect(messages[1]!.content).toBe('Message 3');
   });
 
-  test('truncateFromPosition preserves system messages by default', () => {
+  test('truncateFromPosition preserves system messages by default', async () => {
     const base = createConversation({ title: 'TruncateSystem' });
 
-    const result = withConversation(base, (c) => {
+    const result = await withConversation(base, (c) => {
       c.appendSystemMessage('System prompt')
         .appendUserMessage('Message 1')
         .appendAssistantMessage('Message 2')
@@ -172,10 +169,10 @@ describe('withConversation context window management', () => {
     expect(messages[1]!.content).toBe('Message 3');
   });
 
-  test('truncateToTokenLimit removes oldest messages to fit limit', () => {
+  test('truncateToTokenLimit removes oldest messages to fit limit', async () => {
     const base = createConversation({ title: 'TokenLimit' });
 
-    const result = withConversation(base, (c) => {
+    const result = await withConversation(base, (c) => {
       c.appendUserMessage('This is a longer message that takes more tokens')
         .appendAssistantMessage('Response one')
         .appendUserMessage('Short')
@@ -186,10 +183,10 @@ describe('withConversation context window management', () => {
     expect(getOrderedMessages(result).length).toBeLessThan(4);
   });
 
-  test('truncateToTokenLimit preserves last N messages', () => {
+  test('truncateToTokenLimit preserves last N messages', async () => {
     const base = createConversation({ title: 'PreserveLast' });
 
-    const result = withConversation(base, (c) => {
+    const result = await withConversation(base, (c) => {
       c.appendUserMessage('Old message one')
         .appendAssistantMessage('Old response')
         .appendUserMessage('New message')

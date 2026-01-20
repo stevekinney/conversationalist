@@ -44,10 +44,10 @@ describe('conversationalist types Type Inference', () => {
     });
 
     it('rejects non-JSON arguments at compile time', () => {
-      // @ts-expect-error - functions are not JSONValue
       const badCall: ToolCall = {
         id: 'call-1',
         name: 'tool',
+        // @ts-expect-error - functions are not JSONValue
         arguments: () => 1,
       };
       void badCall;
@@ -62,10 +62,10 @@ describe('conversationalist types Type Inference', () => {
     });
 
     it('rejects non-JSON content at compile time', () => {
-      // @ts-expect-error - Date is not JSONValue
       const badResult: ToolResult = {
         callId: 'call-1',
         outcome: 'success',
+        // @ts-expect-error - Date is not JSONValue
         content: new Date(),
       };
       void badResult;

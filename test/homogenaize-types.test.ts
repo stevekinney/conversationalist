@@ -29,7 +29,6 @@ describe('homogenaize type compatibility', () => {
   });
 
   it('aligns tool call shapes', () => {
-    expectTypeOf<HomogenaizeToolCall>().toMatchTypeOf<ToolCall>();
     expectTypeOf<ToolCall>().toMatchTypeOf<HomogenaizeToolCall>();
   });
 

@@ -218,6 +218,63 @@ describe('truncateFromPosition', () => {
     expect(messages.some((m) => m.role === 'tool-use')).toBe(true);
     expect(messages.some((m) => m.role === 'tool-result')).toBe(true);
   });
+
+  it('returns a valid conversation when preserveToolPairs is true', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(
+      conv,
+      { role: 'user', content: 'Hello' },
+      {
+        role: 'tool-use',
+        content: '',
+        toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+      },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+      },
+      testEnvironment,
+    );
+
+    const truncated = truncateFromPosition(
+      conv,
+      2,
+      { preserveToolPairs: true },
+      testEnvironment,
+    );
+    const messages = getOrderedMessages(truncated);
+    expect(messages.some((m) => m.role === 'tool-use')).toBe(true);
+    expect(messages.some((m) => m.role === 'tool-result')).toBe(true);
+  });
+
+  it('throws when preserveToolPairs is false and a tool-result would be stranded', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(
+      conv,
+      { role: 'user', content: 'Hello' },
+      {
+        role: 'tool-use',
+        content: '',
+        toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+      },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+      },
+      testEnvironment,
+    );
+
+    expect(() =>
+      truncateFromPosition(
+        conv,
+        2,
+        { preserveToolPairs: false, preserveSystemMessages: false },
+        testEnvironment,
+      ),
+    ).toThrow(/preserveToolPairs: true/);
+  });
 });
 
 describe('estimateConversationTokens', () => {
@@ -243,7 +300,7 @@ describe('estimateConversationTokens', () => {
       testEnvironment,
     );
 
-    const tokens = estimateConversationTokens(conv, testEnvironment);
+    const tokens = estimateConversationTokens(conv, undefined, testEnvironment);
     expect(tokens).toBe(3); // 'Hello world' is 11 chars -> 3 tokens
   });
 
@@ -306,7 +363,9 @@ describe('truncateToTokenLimit', () => {
       { estimateTokens: simpleTokenEstimator },
       testEnvironment,
     );
-    expect(getOrderedMessages(truncated).length).toBeLessThan(getOrderedMessages(conv).length);
+    expect(getOrderedMessages(truncated).length).toBeLessThan(
+      getOrderedMessages(conv).length,
+    );
   });
 
   it('preserves system messages', () => {
@@ -474,6 +533,7 @@ describe('truncateToTokenLimit', () => {
       {
         estimateTokens: simpleTokenEstimator,
         preserveLastN: 1,
+        preserveToolPairs: true,
       },
       testEnvironment,
     );
@@ -481,6 +541,38 @@ describe('truncateToTokenLimit', () => {
     const messages = getOrderedMessages(truncated);
     expect(messages.some((m) => m.role === 'tool-use')).toBe(true);
     expect(messages.some((m) => m.role === 'tool-result')).toBe(true);
+  });
+
+  it('throws when preserveToolPairs is false and a tool-result would be stranded', () => {
+    let conv = createConversation({ id: 'test' }, testEnvironment);
+    conv = appendMessages(
+      conv,
+      { role: 'user', content: 'Start' },
+      {
+        role: 'tool-use',
+        content: '',
+        toolCall: { id: 'call-1', name: 'tool', arguments: {} },
+      },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+      },
+      testEnvironment,
+    );
+
+    expect(() =>
+      truncateToTokenLimit(
+        conv,
+        1,
+        {
+          estimateTokens: () => 1,
+          preserveLastN: 1,
+          preserveToolPairs: false,
+        },
+        testEnvironment,
+      ),
+    ).toThrow(/preserveToolPairs: true/);
   });
 
   it('handles messages with token usage during truncation', () => {
@@ -508,7 +600,9 @@ describe('truncateToTokenLimit', () => {
     );
 
     // Should preserve tokenUsage in truncated messages
-    const assistantMsg = getOrderedMessages(truncated).find((m) => m.role === 'assistant');
+    const assistantMsg = getOrderedMessages(truncated).find(
+      (m) => m.role === 'assistant',
+    );
     if (assistantMsg) {
       expect(assistantMsg.tokenUsage).toBeDefined();
     }
@@ -586,7 +680,6 @@ describe('truncateToTokenLimit', () => {
 
   it('does not identify { plugins: [] } as an environment', () => {
     const options = { plugins: [] };
-    // @ts-expect-error - testing runtime behavior for potentially misidentified object
     expect(isConversationEnvironmentParameter(options)).toBe(false);
   });
 

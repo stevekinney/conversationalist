@@ -10,6 +10,7 @@ import {
   ROLE_LABELS,
   toMarkdown,
 } from '../../src/markdown';
+import type { MultiModalContent } from '../../src/multi-modal';
 import type {
   AssistantMessage,
   Conversation,
@@ -518,7 +519,6 @@ describe('toMarkdown', () => {
       expect(result).toContain('call-1');
       expect(result).toContain('search');
     });
-
   });
 });
 
@@ -636,7 +636,7 @@ Content`;
     });
 
     test('throws MarkdownParseError for unknown role', () => {
-const markdown = `---
+      const markdown = `---
 id: conv-1
 status: active
 metadata: {}
@@ -659,7 +659,7 @@ Content`;
     });
 
     test('throws MarkdownParseError when message metadata is missing', () => {
-const markdown = `---
+      const markdown = `---
 id: conv-1
 status: active
 metadata: {}
@@ -677,7 +677,7 @@ Content`;
     });
 
     test('parses conversation with no messages', () => {
-const markdown = `---
+      const markdown = `---
 id: conv-1
 status: active
 metadata: {}
@@ -693,7 +693,7 @@ messages: {}
     });
 
     test('parses conversation with title', () => {
-const markdown = `---
+      const markdown = `---
 id: conv-1
 title: My Conversation
 status: active
@@ -724,7 +724,7 @@ messages: {}
     });
 
     test('parses single text message', () => {
-const markdown = `---
+      const markdown = `---
 id: conv-1
 status: active
 metadata: {}
@@ -752,7 +752,7 @@ Hello, world!`;
     });
 
     test('parses multiple messages', () => {
-const markdown = `---
+      const markdown = `---
 id: conv-1
 status: active
 metadata: {}
@@ -786,7 +786,7 @@ Hello! How can I help?`;
     });
 
     test('parses multi-modal content from metadata', () => {
-const markdown = `---
+      const markdown = `---
 id: conv-1
 status: active
 metadata: {}
@@ -813,7 +813,9 @@ Check this:
 ![image](https://example.com/img.png)`;
 
       const conversation = fromMarkdown(markdown);
-      const content = getOrderedMessages(conversation)[0].content as readonly { type: string }[];
+      const content = getOrderedMessages(conversation)[0].content as readonly {
+        type: string;
+      }[];
       expect(Array.isArray(content)).toBe(true);
       expect(content).toHaveLength(2);
       expect(content[0].type).toBe('text');
@@ -849,7 +851,9 @@ Calling search`;
       expect(getOrderedMessages(conversation)[0].toolCall).toBeDefined();
       expect(getOrderedMessages(conversation)[0].toolCall?.id).toBe('call-1');
       expect(getOrderedMessages(conversation)[0].toolCall?.name).toBe('search');
-      expect(getOrderedMessages(conversation)[0].toolCall?.arguments).toEqual({ query: 'test' });
+      expect(getOrderedMessages(conversation)[0].toolCall?.arguments).toEqual({
+        query: 'test',
+      });
     });
 
     test('parses toolResult metadata', () => {
@@ -1088,7 +1092,9 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(getOrderedMessages(parsed)[0].metadata).toEqual(getOrderedMessages(original)[0].metadata);
+    expect(getOrderedMessages(parsed)[0].metadata).toEqual(
+      getOrderedMessages(original)[0].metadata,
+    );
   });
 
   test('round-trip preserves hidden flag', () => {
@@ -1137,7 +1143,9 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(getOrderedMessages(parsed)[0].toolCall).toEqual(getOrderedMessages(original)[0].toolCall);
+    expect(getOrderedMessages(parsed)[0].toolCall).toEqual(
+      getOrderedMessages(original)[0].toolCall,
+    );
   });
 
   test('round-trip preserves toolResult', () => {
@@ -1179,7 +1187,9 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(getOrderedMessages(parsed)[0].tokenUsage).toEqual(getOrderedMessages(original)[0].tokenUsage);
+    expect(getOrderedMessages(parsed)[0].tokenUsage).toEqual(
+      getOrderedMessages(original)[0].tokenUsage,
+    );
   });
 
   test('round-trip preserves goalCompleted', () => {
@@ -1210,7 +1220,7 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    const content = getOrderedMessages(parsed)[0].content as readonly { type: string }[];
+    const content = getOrderedMessages(parsed)[0].content as MultiModalContent[];
     expect(Array.isArray(content)).toBe(true);
     expect(content).toHaveLength(2);
     expect(content[0]).toEqual({ type: 'text', text: 'Check out this image:' });
@@ -1237,7 +1247,9 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
     const markdown = toMarkdown(original, { includeMetadata: true });
     const parsed = fromMarkdown(markdown);
 
-    expect(getOrderedMessages(parsed)[0].content).toEqual(getOrderedMessages(original)[0].content);
+    expect(getOrderedMessages(parsed)[0].content).toEqual(
+      getOrderedMessages(original)[0].content,
+    );
   });
 
   test('round-trip preserves complete complex conversation', () => {
@@ -1347,7 +1359,9 @@ describe('toMarkdown/fromMarkdown round-trip', () => {
       expect(parsedMsg.tokenUsage).toEqual(originalMsg.tokenUsage);
       if (isAssistantMessage(originalMsg)) {
         expect(isAssistantMessage(parsedMsg)).toBe(true);
-        expect(parsedMsg.goalCompleted).toBe(originalMsg.goalCompleted);
+        if (isAssistantMessage(parsedMsg)) {
+          expect(parsedMsg.goalCompleted).toBe(originalMsg.goalCompleted);
+        }
       }
 
       // Content comparison
@@ -1392,7 +1406,9 @@ describe('role labels', () => {
 
   describe('LABEL_TO_ROLE', () => {
     test('provides inverse mapping of ROLE_LABELS', () => {
-      for (const [role, label] of Object.entries(ROLE_LABELS)) {
+      for (const [role, label] of Object.entries(ROLE_LABELS) as Array<
+        [MessageRole, string]
+      >) {
         expect(LABEL_TO_ROLE[label]).toBe(role);
       }
     });

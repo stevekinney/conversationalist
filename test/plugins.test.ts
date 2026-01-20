@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import type { ConversationEnvironment } from '../src';
 import { appendMessages, ConversationHistory, createConversation } from '../src';
 import { createPIIRedactionPlugin, redactPii } from '../src/redaction';
 import type { Conversation, Message, MessageInput } from '../src/types';
@@ -79,15 +80,19 @@ describe('redactPii', () => {
       content: 'My email is test@example.com',
     });
 
-    expect(getOrderedMessages(conv)[0].content).toBe(
-      'My email is test@example.com',
-    );
+    expect(getOrderedMessages(conv)[0].content).toBe('My email is test@example.com');
   });
 
   it('should work when bound to ConversationHistory', () => {
     const env = { plugins: [redactPii] };
     const history = new ConversationHistory(createConversation(), env);
-    const boundAppend = history.bind(appendMessages);
+    const boundAppend = history.bind(
+      (
+        conversation,
+        input: MessageInput,
+        boundEnv?: Partial<ConversationEnvironment>,
+      ) => appendMessages(conversation, input, boundEnv),
+    );
 
     boundAppend({ role: 'user', content: 'My email is test@example.com' });
 

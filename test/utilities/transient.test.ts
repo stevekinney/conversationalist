@@ -73,9 +73,7 @@ describe('transient utilities', () => {
   });
 
   describe('stripTransientMetadata', () => {
-    const createConversation = (
-      overrides: ConversationOverrides = {},
-    ): Conversation => {
+    const createConversation = (overrides: ConversationOverrides = {}): Conversation => {
       const { messages = [], ids, ...rest } = overrides;
       const baseIds = ids ?? messages.map((message) => message.id);
 

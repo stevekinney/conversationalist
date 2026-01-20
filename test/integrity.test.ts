@@ -37,9 +37,7 @@ describe('integrity', () => {
     };
 
     const issues = validateConversationIntegrity(conv);
-    expect(issues.some((issue) => issue.code === 'integrity:missing-message')).toBe(
-      true,
-    );
+    expect(issues.some((issue) => issue.code === 'integrity:missing-message')).toBe(true);
   });
 
   it('reports messages not listed in ids', () => {
