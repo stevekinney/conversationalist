@@ -34,7 +34,7 @@ async function build() {
   for (const { entry, outdir } of entryPoints) {
     info(`  Building ${entry}...`);
     const buildResult =
-      await $`bun build --target=node --outdir=${outdir} --sourcemap=external --external=zod ${entry}`.quiet();
+      await $`bun build --target=node --outdir=${outdir} --sourcemap=linked --external=zod ${entry}`.quiet();
 
     if (buildResult.exitCode !== 0) {
       error(`JavaScript build failed for ${entry}`);
