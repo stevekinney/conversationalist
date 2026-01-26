@@ -49,9 +49,9 @@ describe('integrity', () => {
     };
 
     const issues = validateConversationIntegrity(conv);
-    expect(
-      issues.some((issue) => issue.code === 'integrity:duplicate-message-id'),
-    ).toBe(true);
+    expect(issues.some((issue) => issue.code === 'integrity:duplicate-message-id')).toBe(
+      true,
+    );
   });
 
   it('reports messages not listed in ids', () => {

@@ -87,11 +87,8 @@ describe('redactPii', () => {
     const env = { plugins: [redactPii] };
     const history = new ConversationHistory(createConversation(), env);
     const boundAppend = history.bind(
-      (
-        conversation,
-        input: MessageInput,
-        boundEnv?: Partial<ConversationEnvironment>,
-      ) => appendMessages(conversation, input, boundEnv),
+      (conversation, input: MessageInput, boundEnv?: Partial<ConversationEnvironment>) =>
+        appendMessages(conversation, input, boundEnv),
     );
 
     boundAppend({ role: 'user', content: 'My email is test@example.com' });
